@@ -169,6 +169,20 @@ create table if not exists public.diagnostics_jobs (
 );
 
 -- ══════════════════════════════════════════════════════════════════════════════
+-- 11. GSC_CONNECTIONS — Google Search Console OAuth tokens (one per user)
+-- ══════════════════════════════════════════════════════════════════════════════
+create table if not exists public.gsc_connections (
+  user_id          uuid primary key references public.users(id) on delete cascade,
+  google_email     text,
+  access_token     text not null,
+  refresh_token    text,
+  token_expires_at timestamptz,
+  scope            text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+
+-- ══════════════════════════════════════════════════════════════════════════════
 -- INDEXES
 -- ══════════════════════════════════════════════════════════════════════════════
 create index if not exists idx_renders_site_created    on public.renders(site_id, created_at desc);
@@ -198,6 +212,7 @@ alter table public.caching_queue enable row level security;
 alter table public.broken_links  enable row level security;
 alter table public.render_diagnostics enable row level security;
 alter table public.diagnostics_jobs enable row level security;
+alter table public.gsc_connections enable row level security;
 
 -- users: own row
 create policy "users_own_row" on public.users
@@ -246,6 +261,10 @@ create policy "diagnostics_jobs_via_site" on public.diagnostics_jobs
   for all using (
     exists (select 1 from public.sites s where s.id = site_id and s.user_id = auth.uid())
   );
+
+-- gsc_connections: own row
+create policy "gsc_connections_own" on public.gsc_connections
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- TRIGGER — auto-insert public.users row on auth signup

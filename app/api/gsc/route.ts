@@ -1,27 +1,40 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { isGscConfigured, getConnection, deleteConnection } from '@/lib/gsc'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// ── GET /api/gsc — connection status (placeholder) ───────────────────────────
-export async function GET() {
+// ── GET /api/gsc — connection status ─────────────────────────────────────────
+export async function GET(req: NextRequest) {
   try {
-    return NextResponse.json({ connected: false, message: 'GSC not connected' })
+    const uid = req.headers.get('x-user-id')
+    if (!uid) return NextResponse.json({ connected: false })
+
+    if (!isGscConfigured()) {
+      return NextResponse.json({ connected: false, configured: false, message: 'GSC OAuth not configured' })
+    }
+
+    const conn = await getConnection(uid)
+    return NextResponse.json({
+      connected: !!conn,
+      configured: true,
+      email: conn?.google_email ?? null,
+    })
   } catch (error) {
     console.error('[GSC_GET]:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-// ── POST /api/gsc — OAuth initiation (placeholder) ───────────────────────────
-export async function POST() {
+// ── DELETE /api/gsc — disconnect ─────────────────────────────────────────────
+export async function DELETE(req: NextRequest) {
   try {
-    return NextResponse.json(
-      { message: 'Google Search Console integration coming soon' },
-      { status: 501 }
-    )
+    const uid = req.headers.get('x-user-id')
+    if (!uid) return NextResponse.json({ error: 'x-user-id required' }, { status: 401 })
+    await deleteConnection(uid)
+    return NextResponse.json({ disconnected: true })
   } catch (error) {
-    console.error('[GSC_POST]:', error)
+    console.error('[GSC_DELETE]:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
