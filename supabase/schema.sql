@@ -135,6 +135,22 @@ create table if not exists public.broken_links (
 );
 
 -- ══════════════════════════════════════════════════════════════════════════════
+-- 9. RENDER_DIAGNOSTICS — per-render health + content-visibility data
+-- ══════════════════════════════════════════════════════════════════════════════
+create table if not exists public.render_diagnostics (
+  id                      uuid primary key default uuid_generate_v4(),
+  site_id                 uuid not null references public.sites(id) on delete cascade,
+  url                     text not null,
+  rendered_at             timestamptz not null default now(),
+  console_errors          jsonb not null default '[]'::jsonb,
+  failed_requests         jsonb not null default '[]'::jsonb,
+  content_diff_percentage numeric(5,2) not null default 0,
+  missing_seo_elements    jsonb not null default '[]'::jsonb,
+  render_succeeded        boolean not null default true,
+  render_time_ms          integer
+);
+
+-- ══════════════════════════════════════════════════════════════════════════════
 -- INDEXES
 -- ══════════════════════════════════════════════════════════════════════════════
 create index if not exists idx_renders_site_created    on public.renders(site_id, created_at desc);
@@ -144,6 +160,8 @@ create index if not exists idx_sites_user_id           on public.sites(user_id);
 create index if not exists idx_caching_queue_status    on public.caching_queue(status, priority desc);
 create index if not exists idx_sitemaps_site_id        on public.sitemaps(site_id);
 create index if not exists idx_broken_links_site_id    on public.broken_links(site_id);
+create index if not exists idx_render_diag_site         on public.render_diagnostics(site_id, rendered_at desc);
+create index if not exists idx_render_diag_url          on public.render_diagnostics(site_id, url, rendered_at desc);
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- ROW LEVEL SECURITY — users only see their own data
@@ -156,6 +174,7 @@ alter table public.sitemaps      enable row level security;
 alter table public.cache_entries enable row level security;
 alter table public.caching_queue enable row level security;
 alter table public.broken_links  enable row level security;
+alter table public.render_diagnostics enable row level security;
 
 -- users: own row
 create policy "users_own_row" on public.users
@@ -189,6 +208,12 @@ create policy "bot_visits_via_site" on public.bot_visits
 
 -- broken_links: scoped through parent site (no user_id column)
 create policy "broken_links_via_site" on public.broken_links
+  for all using (
+    exists (select 1 from public.sites s where s.id = site_id and s.user_id = auth.uid())
+  );
+
+-- render_diagnostics: scoped through parent site (no user_id column)
+create policy "render_diagnostics_via_site" on public.render_diagnostics
   for all using (
     exists (select 1 from public.sites s where s.id = site_id and s.user_id = auth.uid())
   );

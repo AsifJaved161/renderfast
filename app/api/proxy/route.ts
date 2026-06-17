@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { detectBot } from '@/lib/botDetect'
 import { getCachedPage, setCachedPage } from '@/lib/kv'
 import { renderPage, htmlToMarkdown } from '@/lib/renderer'
+import { captureDiagnostics } from '@/lib/diagnostics'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
@@ -121,6 +122,10 @@ export async function GET(req: NextRequest) {
   await setCachedPage(domain, targetUrl, html, CACHE_TTL)
   await persistRender(owner, domain, parsed, html, renderTimeMs, statusCode)
   logRender(owner, domain, targetUrl, bot, ua, req, wantsMarkdown, false, renderTimeMs, statusCode)
+
+  // ── Render Diagnostics (isolated, non-blocking) ──────────────────────────────
+  // Runs after the response is sent; never affects what the crawler receives.
+  after(() => captureDiagnostics({ siteId: owner.siteId, url: targetUrl, renderedHtml: html, renderTimeMs }))
 
   return serve(html, wantsMarkdown, 'MISS', statusCode)
 }

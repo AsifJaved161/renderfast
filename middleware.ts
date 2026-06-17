@@ -12,6 +12,7 @@ const INJECT_API_PREFIXES = [
   '/api/broken-links',
   '/api/cache',
   '/api/seo',
+  '/api/diagnostics',
 ]
 
 function isInjectableApi(pathname: string): boolean {
@@ -97,5 +98,6 @@ export const config = {
     '/api/cache/:path*',
     '/api/cache',
     '/api/seo',
+    '/api/diagnostics/:path*',
   ],
 }
