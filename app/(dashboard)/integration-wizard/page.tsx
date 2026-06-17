@@ -20,6 +20,8 @@ import {
   CodeOutlined,
   CloudServerOutlined,
   ApiOutlined,
+  AppstoreOutlined,
+  DownloadOutlined,
   CopyOutlined,
   EyeTwoTone,
   EyeInvisibleOutlined,
@@ -33,12 +35,12 @@ const { Text, Title } = Typography
 // Where integration snippets send crawler traffic.
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://renderfast.vercel.app'
 
-type Method = 'script' | 'middleware' | 'worker' | 'nginx'
+type Method = 'wordpress' | 'worker' | 'middleware' | 'script' | 'nginx'
 
 export default function IntegrationWizardPage() {
   const [current, setCurrent] = useState(0)
   const [site, setSite] = useState<{ id: string; domain: string } | null>(null)
-  const [method, setMethod] = useState<Method>('worker')
+  const [method, setMethod] = useState<Method>('wordpress')
   const [apiKey, setApiKey] = useState<string>('')
 
   // Fetch the API key once so Step 2 snippets can embed it.
@@ -286,11 +288,14 @@ function StepMethod({
   onNext: () => void
 }) {
   const cards: { key: Method; icon: React.ReactNode; title: string; desc: string }[] = [
+    { key: 'wordpress', icon: <AppstoreOutlined />, title: 'WordPress', desc: 'One-click plugin' },
     { key: 'worker', icon: <CloudServerOutlined />, title: 'Cloudflare Worker', desc: 'Edge — sites on Cloudflare' },
     { key: 'middleware', icon: <CodeOutlined />, title: 'Next.js / Vercel', desc: 'Drop-in middleware.ts' },
     { key: 'script', icon: <ApiOutlined />, title: 'Universal (Node / PHP)', desc: 'Any backend server' },
     { key: 'nginx', icon: <GlobalOutlined />, title: 'Nginx / Apache', desc: 'VPS / self-hosted' },
   ]
+
+  const isWp = method === 'wordpress'
 
   const snippet =
     method === 'worker'
@@ -314,7 +319,7 @@ function StepMethod({
     <Card title="Choose an integration method">
       <Row gutter={16}>
         {cards.map((c) => (
-          <Col xs={12} md={6} key={c.key}>
+          <Col xs={12} md={c.key === 'wordpress' ? 8 : 4} key={c.key}>
             <Card
               hoverable
               onClick={() => setMethod(c.key)}
@@ -337,15 +342,51 @@ function StepMethod({
         ))}
       </Row>
 
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 4 }}
-        message="How it works"
-        description="The snippet runs on your server/edge, detects crawler User-Agents, and serves them prerendered HTML from RenderFast. Real visitors are passed straight through to your site — zero impact on them."
-      />
-
-      <CodeBlock title={filename} code={snippet} />
+      {isWp ? (
+        <div>
+          <Alert
+            type="success"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="Easiest option — no code"
+            description="Install the plugin, log in with your RenderFast email & password inside WordPress, and this domain is connected automatically. Crawlers get prerendered HTML; visitors are untouched."
+          />
+          <Button
+            type="primary"
+            size="large"
+            icon={<DownloadOutlined />}
+            href={`${APP_URL}/renderfast.zip`}
+            style={{ background: BRAND, borderColor: BRAND, marginBottom: 16 }}
+          >
+            Download WordPress plugin
+          </Button>
+          <ol style={{ paddingLeft: 20, color: '#374151', lineHeight: 2 }}>
+            <li>
+              WordPress Admin → <Text strong>Plugins → Add New → Upload Plugin</Text> → choose{' '}
+              <Text code>renderfast.zip</Text> → Install → Activate.
+            </li>
+            <li>
+              Open the new <Text strong>RenderFast</Text> menu item.
+            </li>
+            <li>
+              Click <Text strong>Log in &amp; connect</Text> and enter your RenderFast email &amp;
+              password. (No account? Use the <Text strong>Sign up</Text> button there.)
+            </li>
+            <li>Done — press “Test prerendering” to confirm it’s live.</li>
+          </ol>
+        </div>
+      ) : (
+        <>
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 4 }}
+            message="How it works"
+            description="The snippet runs on your server/edge, detects crawler User-Agents, and serves them prerendered HTML from RenderFast. Real visitors are passed straight through to your site — zero impact on them."
+          />
+          <CodeBlock title={filename} code={snippet} />
+        </>
+      )}
 
       <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between' }}>
         <Button onClick={onBack}>Back</Button>

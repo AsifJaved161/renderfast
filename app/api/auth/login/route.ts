@@ -13,8 +13,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'email and password required' }, { status: 400 })
     }
 
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim()
+    const anon = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim()
+    if (!url || !anon) {
       return NextResponse.json({ error: 'Server not configured — contact support' }, { status: 503 })
+    }
+    try {
+      const u = new URL(url)
+      if (u.protocol !== 'https:') throw new Error('must be https')
+    } catch {
+      return NextResponse.json(
+        { error: 'NEXT_PUBLIC_SUPABASE_URL is invalid — check for a trailing space/newline in Vercel env vars' },
+        { status: 503 }
+      )
     }
 
     const supabase = await createServerClient()
@@ -27,7 +38,8 @@ export async function POST(req: NextRequest) {
     // Session cookies are set automatically by the @supabase/ssr client.
     return NextResponse.json({ user: data.user, session: data.session })
   } catch (error) {
-    console.error('[AUTH_LOGIN_POST]:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    const detail = error instanceof Error ? error.message : String(error)
+    console.error('[AUTH_LOGIN_POST]:', detail)
+    return NextResponse.json({ error: 'Login failed', detail }, { status: 500 })
   }
 }

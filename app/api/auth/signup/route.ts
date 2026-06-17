@@ -14,8 +14,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'email and password required' }, { status: 400 })
     }
 
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    const url = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim()
+    const anon = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim()
+    if (!url || !anon) {
       return NextResponse.json({ error: 'Server not configured — contact support' }, { status: 503 })
+    }
+    // A malformed URL (e.g. missing https:// or a stray newline pasted into the
+    // Vercel dashboard) makes Supabase throw an opaque error — catch it clearly.
+    try {
+      const u = new URL(url)
+      if (u.protocol !== 'https:') throw new Error('must be https')
+    } catch {
+      return NextResponse.json(
+        { error: 'NEXT_PUBLIC_SUPABASE_URL is invalid — check for a trailing space/newline in Vercel env vars' },
+        { status: 503 }
+      )
     }
 
     const supabase = await createServerClient()
@@ -47,7 +60,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ user: data.user })
   } catch (error) {
-    console.error('[AUTH_SIGNUP_POST]:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    const detail = error instanceof Error ? error.message : String(error)
+    console.error('[AUTH_SIGNUP_POST]:', detail)
+    // Surface the real cause so production issues are diagnosable (own app).
+    return NextResponse.json({ error: 'Signup failed', detail }, { status: 500 })
   }
 }

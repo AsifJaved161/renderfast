@@ -2,13 +2,19 @@ import { createServerClient as createSsrServerClient, type CookieOptions } from 
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
+// Read + sanitise an env var. Vercel dashboard paste often leaves a trailing
+// newline / spaces, which makes the Supabase URL invalid and throws at runtime.
+function env(name: string): string {
+  return (process.env[name] ?? '').trim()
+}
+
 // ── Cookie-bound server client (proper @supabase/ssr session handling) ────────
 // Next 15+/16: cookies() is async, so this helper is async and must be awaited.
 export async function createServerSupabase() {
   const cookieStore = await cookies()
   return createSsrServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    env('NEXT_PUBLIC_SUPABASE_URL'),
+    env('NEXT_PUBLIC_SUPABASE_ANON_KEY'),
     {
       cookies: {
         getAll() {
@@ -36,8 +42,8 @@ export const createServerClient = createServerSupabase
 // during `next build` page-data collection (where env vars may be absent).
 function buildSupabaseAdmin() {
   return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    env('NEXT_PUBLIC_SUPABASE_URL'),
+    env('SUPABASE_SERVICE_ROLE_KEY'),
     {
       auth: { autoRefreshToken: false, persistSession: false },
     }
