@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Remove inline-end border on antd Menu when used outside Sider */
+.ant-menu-inline,
+.ant-menu-vertical {
+  border-inline-end: none !important;
+}
+
+/* Tighten menu item border-radius and horizontal margin */
+.ant-menu-item,
+.ant-menu-submenu-title {
+  border-radius: 6px !important;
+  margin-inline: 8px !important;
+  width: calc(100% - 16px) !important;
+}
+
+/* Settings group label uppercase */
+.ant-menu-item-group-title {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.06em !important;
+  color: #9ca3af !important;
+  padding-inline-start: 8px !important;
+}
+
+/* Smooth antd Drawer animation */
+.ant-drawer-content-wrapper {
+  transition: transform 0.25s ease !important;
+}

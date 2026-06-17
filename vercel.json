@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "next build",
+  "functions": {
+    "app/api/render/route.ts": { "maxDuration": 60 },
+    "app/api/queue/process/route.ts": { "maxDuration": 60 },
+    "app/api/billing/webhook/route.ts": { "maxDuration": 30 }
+  }
+}

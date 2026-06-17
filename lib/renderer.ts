@@ -1,0 +1,100 @@
+// Cloudflare Browser Rendering API — no local browser process, no RAM pool.
+import TurndownService from 'turndown'
+
+const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID!
+const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN!
+// Override-able; defaults to the official content endpoint.
+const CONTENT_URL =
+  process.env.CLOUDFLARE_BROWSER_RENDERING_URL ||
+  `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/browser-rendering/content`
+
+export interface RenderResult {
+  html: string
+  renderTimeMs: number
+  statusCode: number
+  error?: string
+}
+
+export async function renderPage(url: string, isMobile = false): Promise<RenderResult> {
+  // ── Stub mode ───────────────────────────────────────────────────────────────
+  // Without Cloudflare Browser Rendering configured, return fake HTML so the rest
+  // of the app (cache, queue, proxy, analytics) is fully testable end-to-end.
+  if (!process.env.CLOUDFLARE_BROWSER_RENDERING_URL) {
+    const stubHtml = `<!DOCTYPE html>
+<html>
+<head><title>RenderFast Stub - ${url}</title><base href="${url}"></head>
+<body>
+  <h1>RenderFast Stub Render</h1>
+  <p>URL: ${url}</p>
+  <p>This is a test render from RenderFast stub mode.</p>
+  <p>Configure CLOUDFLARE_BROWSER_RENDERING_URL for real rendering.</p>
+</body>
+</html>`
+    return { html: stubHtml, renderTimeMs: 50, statusCode: 200 }
+  }
+
+  const start = Date.now()
+  try {
+    const res = await fetch(CONTENT_URL, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${API_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        waitUntil: 'networkidle2',
+        rejectResourceTypes: ['image', 'font', 'media'],
+        viewport: isMobile
+          ? { width: 390, height: 844, isMobile: true }
+          : { width: 1280, height: 800 },
+      }),
+    })
+
+    const renderTimeMs = Date.now() - start
+    const data = await res.json().catch(() => null)
+
+    if (!res.ok || !data?.success) {
+      return {
+        html: '',
+        renderTimeMs,
+        statusCode: res.status || 500,
+        error: data?.errors?.[0]?.message || 'render failed',
+      }
+    }
+
+    const rawHtml: string = data.result ?? ''
+    return { html: cleanHtml(rawHtml, url), renderTimeMs, statusCode: 200 }
+  } catch (err) {
+    return {
+      html: '',
+      renderTimeMs: Date.now() - start,
+      statusCode: 500,
+      error: err instanceof Error ? err.message : String(err),
+    }
+  }
+}
+
+// ── DOM cleanup: strip scripts/iframes/handlers, inject <base> ────────────────
+function cleanHtml(html: string, url: string): string {
+  let out = html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<iframe\b[^>]*>[\s\S]*?<\/iframe>/gi, '')
+    // remove inline event handlers (onclick, onload, …)
+    .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+
+  const baseTag = `<base href="${url}">`
+  if (/<head[^>]*>/i.test(out)) {
+    out = out.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`)
+  } else {
+    out = baseTag + out
+  }
+  return out
+}
+
+// ── HTML → Markdown for AI bots ───────────────────────────────────────────────
+const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' })
+
+export function htmlToMarkdown(html: string): string {
+  return turndown.turndown(html)
+}
