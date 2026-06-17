@@ -22,6 +22,14 @@ export const DIAGNOSTICS_ENABLED = process.env.RENDER_DIAGNOSTICS !== 'off'
 // Keep only the latest N diagnostic runs per URL (prevents unbounded growth).
 const MAX_RUNS_PER_URL = 20
 
+// Cap HTML processed for diff/SEO so a huge or malicious page can't exhaust
+// CPU/memory on the worker. ~2 MB of HTML is far more than any real page needs.
+const MAX_HTML_BYTES = 2_000_000
+
+function capHtml(html: string): string {
+  return html.length > MAX_HTML_BYTES ? html.slice(0, MAX_HTML_BYTES) : html
+}
+
 // UA of a non-JS crawler — a plain fetch with this UA returns the same server
 // HTML those bots see (before any client-side JS runs).
 const RAW_CRAWLER_UA =
@@ -184,7 +192,9 @@ async function persistDiagnostic(row: {
 }
 
 // ── Core (awaitable) routine ─────────────────────────────────────────────────
-async function runDiagnostics(input: DiagnosticInput): Promise<void> {
+// Exported so a "re-scan" endpoint can await a batch; captureDiagnostics() is
+// the fire-and-forget wrapper used on the hot render path.
+export async function runDiagnostics(input: DiagnosticInput): Promise<void> {
   // Fetch the raw, no-JS HTML the way a non-JS crawler would receive it.
   let rawHtml = ''
   try {
@@ -196,6 +206,10 @@ async function runDiagnostics(input: DiagnosticInput): Promise<void> {
   } catch {
     // Raw fetch failed (timeout/blocked) — treat as empty; diff will read 100%.
   }
+
+  // Truncate both sides before any text processing (resource-exhaustion guard).
+  rawHtml = capHtml(rawHtml)
+  const renderedHtml = capHtml(input.renderedHtml)
 
   const signals = input.signals ?? {}
   const consoleErrors = signals.consoleErrors ?? []
@@ -214,9 +228,9 @@ async function runDiagnostics(input: DiagnosticInput): Promise<void> {
     url: input.url,
     console_errors: consoleErrors,
     failed_requests: failedRequests,
-    content_diff_percentage: contentDiffPercentage(rawHtml, input.renderedHtml),
-    missing_seo_elements: diffSeoElements(rawHtml, input.renderedHtml),
-    render_succeeded: computeRenderSucceeded(input.renderedHtml, signals),
+    content_diff_percentage: contentDiffPercentage(rawHtml, renderedHtml),
+    missing_seo_elements: diffSeoElements(rawHtml, renderedHtml),
+    render_succeeded: computeRenderSucceeded(renderedHtml, signals),
     render_time_ms: input.renderTimeMs,
   })
 }

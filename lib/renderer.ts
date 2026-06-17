@@ -20,6 +20,12 @@ export interface RenderResult {
 const CF_CONFIGURED =
   !!API_TOKEN && (!!ACCOUNT_ID || !!process.env.CLOUDFLARE_BROWSER_RENDERING_URL)
 
+// True once real rendering is set up. Used to avoid billing quota / storing
+// misleading diagnostics for stub renders when Cloudflare isn't configured yet.
+export function isRenderConfigured(): boolean {
+  return CF_CONFIGURED
+}
+
 export async function renderPage(url: string, isMobile = false): Promise<RenderResult> {
   // ── Dev fallback (Cloudflare not configured) ─────────────────────────────────
   // Only used when CLOUDFLARE_* env vars are absent, so local/dev work doesn't 500.

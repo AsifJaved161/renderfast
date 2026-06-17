@@ -151,6 +151,24 @@ create table if not exists public.render_diagnostics (
 );
 
 -- ══════════════════════════════════════════════════════════════════════════════
+-- 10. DIAGNOSTICS_JOBS — one row per "Re-scan" request (worker-processed)
+-- ══════════════════════════════════════════════════════════════════════════════
+create table if not exists public.diagnostics_jobs (
+  id            uuid primary key default uuid_generate_v4(),
+  site_id       uuid not null references public.sites(id) on delete cascade,
+  user_id       uuid not null references public.users(id) on delete cascade,
+  urls          jsonb not null default '[]'::jsonb,
+  status        text not null default 'queued'
+                  check (status in ('queued', 'running', 'done', 'failed')),
+  total_count   integer not null default 0,
+  done_count    integer not null default 0,
+  error_message text,
+  created_at    timestamptz not null default now(),
+  started_at    timestamptz,
+  finished_at   timestamptz
+);
+
+-- ══════════════════════════════════════════════════════════════════════════════
 -- INDEXES
 -- ══════════════════════════════════════════════════════════════════════════════
 create index if not exists idx_renders_site_created    on public.renders(site_id, created_at desc);
@@ -162,6 +180,10 @@ create index if not exists idx_sitemaps_site_id        on public.sitemaps(site_i
 create index if not exists idx_broken_links_site_id    on public.broken_links(site_id);
 create index if not exists idx_render_diag_site         on public.render_diagnostics(site_id, rendered_at desc);
 create index if not exists idx_render_diag_url          on public.render_diagnostics(site_id, url, rendered_at desc);
+create index if not exists idx_diag_jobs_site           on public.diagnostics_jobs(site_id, created_at desc);
+create index if not exists idx_diag_jobs_user_status    on public.diagnostics_jobs(user_id, status);
+create unique index if not exists uniq_active_diag_job_per_site
+  on public.diagnostics_jobs(site_id) where status in ('queued', 'running');
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- ROW LEVEL SECURITY — users only see their own data
@@ -175,6 +197,7 @@ alter table public.cache_entries enable row level security;
 alter table public.caching_queue enable row level security;
 alter table public.broken_links  enable row level security;
 alter table public.render_diagnostics enable row level security;
+alter table public.diagnostics_jobs enable row level security;
 
 -- users: own row
 create policy "users_own_row" on public.users
@@ -214,6 +237,12 @@ create policy "broken_links_via_site" on public.broken_links
 
 -- render_diagnostics: scoped through parent site (no user_id column)
 create policy "render_diagnostics_via_site" on public.render_diagnostics
+  for all using (
+    exists (select 1 from public.sites s where s.id = site_id and s.user_id = auth.uid())
+  );
+
+-- diagnostics_jobs: scoped through parent site
+create policy "diagnostics_jobs_via_site" on public.diagnostics_jobs
   for all using (
     exists (select 1 from public.sites s where s.id = site_id and s.user_id = auth.uid())
   );

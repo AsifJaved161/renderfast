@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Link from 'next/link'
 import {
   Row,
@@ -10,41 +10,66 @@ import {
   Progress,
   Collapse,
   Tag,
-  Table,
   Select,
   Alert,
   Empty,
   Skeleton,
   Typography,
   Space,
+  message,
 } from 'antd'
-import { ScanOutlined, GoogleOutlined } from '@ant-design/icons'
+import {
+  ScanOutlined,
+  GoogleOutlined,
+  EyeInvisibleOutlined,
+  TagsOutlined,
+  BugOutlined,
+  CloseCircleOutlined,
+  WarningOutlined,
+} from '@ant-design/icons'
 
 const BRAND = '#2da01d'
-const { Title, Text } = Typography
+const { Title, Text, Paragraph } = Typography
 
-type Severity = 'Critical' | 'Warning' | 'Info'
+// Content-diff threshold above which a page counts as "hidden from crawlers".
+const CONTENT_DIFF_THRESHOLD = 20
 
-interface Issue {
-  key: string
-  name: string
-  severity: Severity
-  fix: string
-  urls: { url: string; renderTime: number | null }[]
+interface FailedRequest {
+  url: string
+  resourceType: string
+  reason: string
 }
 
-interface SeoResult {
-  analyzed: number
-  htmlAnalyzed: number
-  score: number | null
-  issues: Issue[]
+interface UrlIssue {
+  url: string
+  score: number
+  contentDiffPercentage: number
+  renderSucceeded: boolean
+  renderTimeMs: number | null
+  missingSeoElements: string[]
+  consoleErrors: string[]
+  failedRequests: FailedRequest[]
+  consoleErrorCount: number
+  failedRequestCount: number
+  renderedAt: string
+}
+
+interface DiagSummary {
+  domain: string
+  healthScore: number | null
+  urlsChecked: number
+  totalRendered: number
+  urlsWithIssues: UrlIssue[]
+  topErrors: { message: string; count: number }[]
   message?: string
 }
 
-const SEVERITY_COLOR: Record<Severity, string> = {
-  Critical: 'red',
-  Warning: 'orange',
-  Info: 'blue',
+interface ScanJob {
+  id: string
+  status: 'queued' | 'running' | 'done' | 'failed'
+  total_count: number
+  done_count: number
+  error_message?: string | null
 }
 
 function scoreColor(score: number) {
@@ -53,12 +78,72 @@ function scoreColor(score: number) {
   return BRAND
 }
 
+// Friendly label for the internal SEO element keys.
+const SEO_LABEL: Record<string, string> = {
+  title: 'title',
+  meta_description: 'meta description',
+  h1: 'H1',
+  canonical: 'canonical',
+  jsonld: 'JSON-LD',
+}
+
+// Derive the human-readable issues shown for one URL.
+function deriveIssues(u: UrlIssue) {
+  const out: { key: string; label: string; detail: string; color: string; icon: React.ReactNode }[] = []
+  if (!u.renderSucceeded)
+    out.push({
+      key: 'render',
+      label: 'Render failed',
+      detail: 'Page render did not complete — main content may be empty.',
+      color: 'red',
+      icon: <CloseCircleOutlined />,
+    })
+  if (u.contentDiffPercentage > CONTENT_DIFF_THRESHOLD)
+    out.push({
+      key: 'content',
+      label: 'Content hidden from AI bots/crawlers',
+      detail: `${u.contentDiffPercentage}% of content invisible to crawlers (only appears after JS).`,
+      color: 'orange',
+      icon: <EyeInvisibleOutlined />,
+    })
+  if (u.missingSeoElements.length > 0)
+    out.push({
+      key: 'seo',
+      label: 'Missing SEO tag',
+      detail: `Missing: ${u.missingSeoElements.map((e) => SEO_LABEL[e] ?? e).join(', ')}`,
+      color: 'gold',
+      icon: <TagsOutlined />,
+    })
+  if (u.consoleErrorCount > 0 || u.failedRequestCount > 0)
+    out.push({
+      key: 'js',
+      label: 'JavaScript error',
+      detail: `${u.consoleErrorCount} console error(s), ${u.failedRequestCount} failed request(s).`,
+      color: 'volcano',
+      icon: <BugOutlined />,
+    })
+  if (out.length === 0)
+    out.push({
+      key: 'low',
+      label: 'Low health score',
+      detail: `Overall page health is ${u.score}/100.`,
+      color: 'default',
+      icon: <WarningOutlined />,
+    })
+  return out
+}
+
 export default function InsightPage() {
   const [sites, setSites] = useState<{ id: string; domain: string }[]>([])
   const [siteId, setSiteId] = useState<string | undefined>()
   const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<SeoResult | null>(null)
+  const [job, setJob] = useState<ScanJob | null>(null)
+  const [data, setData] = useState<DiagSummary | null>(null)
   const [gscConnected, setGscConnected] = useState<boolean | null>(null)
+  const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const wasActive = useRef(false)
+
+  const jobActive = !!job && (job.status === 'queued' || job.status === 'running')
 
   useEffect(() => {
     fetch('/api/sites')
@@ -69,31 +154,93 @@ export default function InsightPage() {
         setSiteId((prev) => prev ?? list[0]?.id)
       })
       .catch(() => setSites([]))
+    // GSC banner — separate feature, untouched.
     fetch('/api/gsc')
       .then((r) => r.json())
       .then((d) => setGscConnected(!!d.connected))
       .catch(() => setGscConnected(false))
   }, [])
 
-  const scan = useCallback(async () => {
+  const load = useCallback(async () => {
     if (!siteId) return
     setLoading(true)
     try {
-      const res = await fetch(`/api/seo?site_id=${siteId}`)
-      const data = await res.json()
-      setResult(res.ok ? data : { analyzed: 0, htmlAnalyzed: 0, score: null, issues: [], message: data.error })
+      const res = await fetch(`/api/diagnostics/${siteId}`)
+      const json = await res.json()
+      setData(
+        res.ok
+          ? json
+          : { domain: '', healthScore: null, urlsChecked: 0, totalRendered: 0, urlsWithIssues: [], topErrors: [], message: json.error }
+      )
     } catch {
-      setResult({ analyzed: 0, htmlAnalyzed: 0, score: null, issues: [], message: 'Scan failed' })
+      setData({ domain: '', healthScore: null, urlsChecked: 0, totalRendered: 0, urlsWithIssues: [], topErrors: [], message: 'Failed to load diagnostics' })
     } finally {
       setLoading(false)
     }
   }, [siteId])
 
   useEffect(() => {
-    if (siteId) scan()
-  }, [siteId, scan])
+    if (siteId) load()
+  }, [siteId, load])
 
-  const score = result?.score ?? null
+  // Poll the scan-job status; self-reschedules while a job is active, and reloads
+  // the summary once a job transitions from active → finished.
+  const poll = useCallback(async () => {
+    if (!siteId) return
+    try {
+      const res = await fetch(`/api/diagnostics/${siteId}/scan-status`)
+      const d = await res.json()
+      setJob(d.job ?? null)
+      const active = !!d.active
+      if (wasActive.current && !active) {
+        if (d.job?.status === 'failed') message.error(d.job.error_message ?? 'Scan failed')
+        else message.success('Scan complete')
+        await load()
+      }
+      wasActive.current = active
+      if (active) pollTimer.current = setTimeout(poll, 2500)
+    } catch {
+      /* transient — will resume on next trigger */
+    }
+  }, [siteId, load])
+
+  // On site change: reset and discover any in-progress job (resume polling).
+  useEffect(() => {
+    wasActive.current = false
+    setJob(null)
+    if (siteId) poll()
+    return () => {
+      if (pollTimer.current) clearTimeout(pollTimer.current)
+    }
+  }, [siteId, poll])
+
+  // Re-scan: ENQUEUE a job (no rendering here), then poll its progress.
+  const rescan = useCallback(async () => {
+    if (!siteId || jobActive) return // idempotency: ignore while a job is active
+    // Optimistic disable immediately on click.
+    setJob({ id: 'pending', status: 'queued', total_count: 0, done_count: 0 })
+    wasActive.current = true
+    try {
+      const res = await fetch(`/api/diagnostics/${siteId}`, { method: 'POST' })
+      const d = await res.json()
+      if (!res.ok) {
+        message.error(d.error ?? 'Could not start scan')
+        setJob(null)
+        wasActive.current = false
+        return
+      }
+      setJob(d.job)
+      if (pollTimer.current) clearTimeout(pollTimer.current)
+      poll()
+    } catch {
+      message.error('Could not start scan')
+      setJob(null)
+      wasActive.current = false
+    }
+  }, [siteId, jobActive, poll])
+
+  const score = data?.healthScore ?? null
+  const issues = data?.urlsWithIssues ?? []
 
   return (
     <div style={{ padding: 24 }}>
@@ -112,17 +259,21 @@ export default function InsightPage() {
           <Button
             type="primary"
             icon={<ScanOutlined />}
-            loading={loading}
-            onClick={scan}
-            disabled={!siteId}
+            loading={jobActive}
+            onClick={rescan}
+            disabled={!siteId || jobActive}
             style={{ background: BRAND, borderColor: BRAND }}
           >
-            {loading ? 'Scanning…' : 'Re-scan'}
+            {jobActive
+              ? job!.status === 'queued'
+                ? 'Queued…'
+                : `Scanning ${job!.done_count}/${job!.total_count}`
+              : 'Re-scan'}
           </Button>
         </Space>
       </div>
 
-      {/* ── Google Search Console connect ───────────────────────────────────── */}
+      {/* ── Google Search Console connect (separate feature — untouched) ─────── */}
       {gscConnected === false && (
         <Alert
           type="info"
@@ -146,13 +297,9 @@ export default function InsightPage() {
         <Card>
           <Empty description="Add a domain and render some pages to see SEO insights." />
         </Card>
-      ) : loading && !result ? (
+      ) : loading && !data ? (
         <Card>
           <Skeleton active paragraph={{ rows: 6 }} />
-        </Card>
-      ) : result?.message && result.analyzed === 0 ? (
-        <Card>
-          <Empty description={result.message} />
         </Card>
       ) : (
         <Row gutter={[16, 16]}>
@@ -165,7 +312,8 @@ export default function InsightPage() {
                   {score == null ? (
                     <div style={{ padding: '40px 0' }}>
                       <Text type="secondary">
-                        HTML content checks need cached pages. Configure rendering & render some URLs.
+                        No rendered pages analysed yet. Click <b>Re-scan</b> to render this domain’s
+                        URLs and analyse them.
                       </Text>
                     </div>
                   ) : (
@@ -187,7 +335,7 @@ export default function InsightPage() {
                 )}
                 <div style={{ marginTop: 12 }}>
                   <Text type="secondary" style={{ fontSize: 12 }}>
-                    Analysed {result?.htmlAnalyzed ?? 0} of {result?.analyzed ?? 0} rendered pages
+                    Analysed {data?.urlsChecked ?? 0} of {data?.totalRendered ?? 0} rendered pages
                   </Text>
                 </div>
               </div>
@@ -196,52 +344,99 @@ export default function InsightPage() {
 
           {/* ── Issues ────────────────────────────────────────────────────── */}
           <Col xs={24} md={16}>
-            <Card title={`Issues Found${result?.issues.length ? ` (${result.issues.length})` : ''}`}>
-              {!result || result.issues.length === 0 ? (
-                <Empty description="No SEO issues detected on the analysed pages. 🎉" />
+            <Card title={`Issues Found${issues.length ? ` (${issues.length})` : ''}`}>
+              {issues.length === 0 ? (
+                <Empty
+                  description={
+                    score == null
+                      ? 'Run a scan to analyse this domain’s pages.'
+                      : 'No SEO issues detected on the analysed pages. 🎉'
+                  }
+                />
               ) : (
                 <Collapse
                   accordion
-                  items={result.issues.map((issue) => ({
-                    key: issue.key,
-                    label: (
-                      <Space>
-                        <Tag color={SEVERITY_COLOR[issue.severity]}>{issue.severity}</Tag>
-                        <Text strong>{issue.name}</Text>
-                        <Text type="secondary">({issue.urls.length} URLs)</Text>
-                      </Space>
-                    ),
-                    children: (
-                      <>
-                        <Alert type="info" showIcon message={issue.fix} style={{ marginBottom: 12 }} />
-                        <Table
-                          rowKey="url"
-                          size="small"
-                          pagination={issue.urls.length > 8 ? { pageSize: 8 } : false}
-                          dataSource={issue.urls}
-                          columns={[
-                            {
-                              title: 'URL',
-                              dataIndex: 'url',
-                              ellipsis: true,
-                              render: (u: string) => (
-                                <a href={u} target="_blank" rel="noopener noreferrer">
-                                  {u}
-                                </a>
-                              ),
-                            },
-                            {
-                              title: 'Render Time',
-                              dataIndex: 'renderTime',
-                              width: 130,
-                              render: (v: number | null) =>
-                                v == null ? '—' : <Text type={v > 2000 ? 'danger' : undefined}>{v} ms</Text>,
-                            },
-                          ]}
-                        />
-                      </>
-                    ),
-                  }))}
+                  items={issues.map((u) => {
+                    const derived = deriveIssues(u)
+                    return {
+                      key: u.url,
+                      label: (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <Space size={4} wrap>
+                            <Text strong style={{ wordBreak: 'break-all' }}>
+                              {u.url}
+                            </Text>
+                            <Tag color={scoreColor(u.score) === BRAND ? 'green' : scoreColor(u.score) === '#faad14' ? 'orange' : 'red'}>
+                              {u.score}/100
+                            </Tag>
+                          </Space>
+                          <Space size={[4, 4]} wrap>
+                            {derived.map((d) => (
+                              <Tag key={d.key} color={d.color} icon={d.icon}>
+                                {d.label}
+                              </Tag>
+                            ))}
+                          </Space>
+                        </div>
+                      ),
+                      children: (
+                        <div>
+                          {/* Per-issue human-readable details */}
+                          {derived.map((d) => (
+                            <Alert
+                              key={d.key}
+                              type={d.color === 'red' || d.color === 'volcano' ? 'error' : d.color === 'default' ? 'info' : 'warning'}
+                              showIcon
+                              icon={d.icon}
+                              message={d.label}
+                              description={d.detail}
+                              style={{ marginBottom: 8 }}
+                            />
+                          ))}
+
+                          {/* Raw console errors */}
+                          {u.consoleErrors.length > 0 && (
+                            <>
+                              <Text strong style={{ fontSize: 13 }}>
+                                Console errors
+                              </Text>
+                              <Paragraph>
+                                <pre style={preStyle}>{u.consoleErrors.join('\n')}</pre>
+                              </Paragraph>
+                            </>
+                          )}
+
+                          {/* Raw failed requests */}
+                          {u.failedRequests.length > 0 && (
+                            <>
+                              <Text strong style={{ fontSize: 13 }}>
+                                Failed requests
+                              </Text>
+                              <Paragraph>
+                                <pre style={preStyle}>
+                                  {u.failedRequests
+                                    .map((f) => `[${f.resourceType || 'resource'}] ${f.url} — ${f.reason}`)
+                                    .join('\n')}
+                                </pre>
+                              </Paragraph>
+                            </>
+                          )}
+
+                          <Space size={16} wrap>
+                            <a href={u.url} target="_blank" rel="noopener noreferrer">
+                              Open URL ↗
+                            </a>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              Render time: {u.renderTimeMs != null ? `${u.renderTimeMs} ms` : '—'}
+                            </Text>
+                            <Text type="secondary" style={{ fontSize: 12 }}>
+                              Last analysed: {new Date(u.renderedAt).toLocaleString()}
+                            </Text>
+                          </Space>
+                        </div>
+                      ),
+                    }
+                  })}
                 />
               )}
             </Card>
@@ -250,4 +445,16 @@ export default function InsightPage() {
       )}
     </div>
   )
+}
+
+const preStyle: React.CSSProperties = {
+  maxHeight: 200,
+  overflow: 'auto',
+  background: '#16213e',
+  color: '#e6e6e6',
+  padding: 12,
+  borderRadius: 6,
+  fontSize: 12,
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-all',
 }
