@@ -18,25 +18,36 @@ import {
 import {
   GlobalOutlined,
   CodeOutlined,
-  AppstoreOutlined,
+  CloudServerOutlined,
+  ApiOutlined,
   CopyOutlined,
   EyeTwoTone,
   EyeInvisibleOutlined,
   CheckCircleFilled,
   CloseCircleFilled,
-  DownloadOutlined,
 } from '@ant-design/icons'
 
 const BRAND = '#2da01d'
-const { Paragraph, Text, Title } = Typography
+const { Text, Title } = Typography
 
-type Method = 'dns' | 'middleware' | 'wordpress'
+// Where integration snippets send crawler traffic.
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://renderfast.vercel.app'
+
+type Method = 'script' | 'middleware' | 'worker' | 'nginx'
 
 export default function IntegrationWizardPage() {
   const [current, setCurrent] = useState(0)
   const [site, setSite] = useState<{ id: string; domain: string } | null>(null)
-  const [method, setMethod] = useState<Method>('dns')
+  const [method, setMethod] = useState<Method>('worker')
   const [apiKey, setApiKey] = useState<string>('')
+
+  // Fetch the API key once so Step 2 snippets can embed it.
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((r) => r.json())
+      .then((d) => setApiKey(d.user?.api_key ?? ''))
+      .catch(() => {})
+  }, [])
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>
@@ -63,6 +74,7 @@ export default function IntegrationWizardPage() {
       {current === 1 && (
         <StepMethod
           domain={site?.domain ?? 'your-domain.com'}
+          apiKey={apiKey}
           method={method}
           setMethod={setMethod}
           onBack={() => setCurrent(0)}
@@ -142,31 +154,167 @@ function StepDomain({ onNext }: { onNext: (s: { id: string; domain: string }) =>
   )
 }
 
+// Bot user-agent list shared across all snippets.
+const BOT_UA =
+  'bot|crawl|spider|googlebot|bingbot|duckduckbot|yandex|baidu|gptbot|oai-searchbot|chatgpt-user|claudebot|anthropic|perplexitybot|amazonbot|applebot|facebookexternalhit|twitterbot|linkedinbot|slackbot|telegrambot|whatsapp|discordbot'
+
+// ── Snippet generators (all hit ${APP_URL}/api/proxy with the API key) ────────
+function snippetWorker(key: string) {
+  return `// Cloudflare Worker — deploy on a Workers Route for your zone (example.com/*)
+const PRERENDER = '${APP_URL}/api/proxy'
+const TOKEN = '${key || 'YOUR_API_KEY'}'
+const BOT = /${BOT_UA}/i
+const STATIC = /\\.(js|css|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|map|json|xml|txt|pdf)$/i
+
+export default {
+  async fetch(request) {
+    const ua = request.headers.get('user-agent') || ''
+    const url = new URL(request.url)
+    if (request.method === 'GET' && BOT.test(ua) && !STATIC.test(url.pathname)) {
+      const r = await fetch(PRERENDER + '?url=' + encodeURIComponent(request.url), {
+        headers: { 'User-Agent': ua, 'X-Prerender-Token': TOKEN },
+        redirect: 'manual',
+      })
+      if (r.status === 200) return new Response(r.body, { headers: { 'content-type': r.headers.get('content-type') || 'text/html' } })
+    }
+    return fetch(request)
+  },
+}`
+}
+
+function snippetMiddleware(key: string) {
+  return `// middleware.ts — Next.js / Vercel (project root)
+import { NextRequest, NextResponse } from 'next/server'
+
+const PRERENDER = '${APP_URL}/api/proxy'
+const TOKEN = '${key || 'YOUR_API_KEY'}'
+const BOT = /${BOT_UA}/i
+
+export async function middleware(req: NextRequest) {
+  const ua = req.headers.get('user-agent') || ''
+  if (BOT.test(ua)) {
+    const res = await fetch(PRERENDER + '?url=' + encodeURIComponent(req.nextUrl.href), {
+      headers: { 'User-Agent': ua, 'X-Prerender-Token': TOKEN },
+    })
+    const type = res.headers.get('content-type') || ''
+    if (res.ok && type.includes('text/html')) {
+      return new NextResponse(await res.text(), {
+        status: 200,
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      })
+    }
+  }
+  return NextResponse.next()
+}
+
+// Run on page routes only (skip _next, api, and files with an extension).
+export const config = { matcher: ['/((?!_next|api|.*\\\\.).*)'] }`
+}
+
+function snippetScript(key: string) {
+  return `// Express / Node — add BEFORE your routes
+const PRERENDER = '${APP_URL}/api/proxy'
+const TOKEN = '${key || 'YOUR_API_KEY'}'
+const BOT = /${BOT_UA}/i
+
+app.use(async (req, res, next) => {
+  const ua = req.headers['user-agent'] || ''
+  if (req.method === 'GET' && BOT.test(ua) && !/\\.\\w{2,4}$/.test(req.path)) {
+    try {
+      const target = req.protocol + '://' + req.get('host') + req.originalUrl
+      const r = await fetch(PRERENDER + '?url=' + encodeURIComponent(target), {
+        headers: { 'User-Agent': ua, 'X-Prerender-Token': TOKEN },
+      })
+      if (r.ok) { res.set('content-type', 'text/html; charset=utf-8'); return res.send(await r.text()) }
+    } catch (_) {}
+  }
+  next()
+})
+
+/* ── PHP equivalent (put at the very top of index.php) ──
+<?php
+$ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+if (preg_match('/${BOT_UA}/i', $ua)) {
+  $target = (isset($_SERVER['HTTPS'])?'https':'http').'://'.$_SERVER['HTTP_HOST'].$_SERVER['REQUEST_URI'];
+  $ctx = stream_context_create(['http'=>['header'=>"User-Agent: $ua\\r\\nX-Prerender-Token: ${key || 'YOUR_API_KEY'}\\r\\n"]]);
+  $html = @file_get_contents('${APP_URL}/api/proxy?url='.urlencode($target), false, $ctx);
+  if ($html !== false) { header('Content-Type: text/html; charset=utf-8'); echo $html; exit; }
+}
+?>
+*/`
+}
+
+function snippetNginx(key: string) {
+  return `# ── Nginx (http {} block) ──
+map $http_user_agent $rf_is_bot {
+  default 0;
+  "~*(${BOT_UA})" 1;
+}
+
+# ── inside your server {} ──
+location / {
+  if ($rf_is_bot) { rewrite ^ /_renderfast last; }
+  try_files $uri $uri/ /index.html;   # ← your normal config
+}
+location /_renderfast {
+  internal;
+  proxy_set_header X-Prerender-Token ${key || 'YOUR_API_KEY'};
+  proxy_set_header User-Agent $http_user_agent;
+  proxy_pass ${APP_URL}/api/proxy?url=https://$host$request_uri;
+}
+
+# ── Apache .htaccess equivalent (needs mod_proxy + mod_rewrite) ──
+# RewriteEngine On
+# RewriteCond %{HTTP_USER_AGENT} (${BOT_UA}) [NC]
+# RewriteCond %{REQUEST_URI} !\\.(js|css|png|jpe?g|gif|svg|ico|xml|txt|pdf)$ [NC]
+# RewriteRule ^(.*)$ ${APP_URL}/api/proxy?url=https://%{HTTP_HOST}%{REQUEST_URI} [P,L]`
+}
+
 // ── Step 2 ─────────────────────────────────────────────────────────────────
 function StepMethod({
-  domain,
+  apiKey,
   method,
   setMethod,
   onBack,
   onNext,
 }: {
   domain: string
+  apiKey: string
   method: Method
   setMethod: (m: Method) => void
   onBack: () => void
   onNext: () => void
 }) {
   const cards: { key: Method; icon: React.ReactNode; title: string; desc: string }[] = [
-    { key: 'dns', icon: <GlobalOutlined />, title: 'DNS Proxy', desc: 'Point a CNAME at RenderFast' },
-    { key: 'middleware', icon: <CodeOutlined />, title: 'Next.js Middleware', desc: 'Drop-in middleware.ts' },
-    { key: 'wordpress', icon: <AppstoreOutlined />, title: 'WordPress Plugin', desc: 'Install our plugin' },
+    { key: 'worker', icon: <CloudServerOutlined />, title: 'Cloudflare Worker', desc: 'Edge — sites on Cloudflare' },
+    { key: 'middleware', icon: <CodeOutlined />, title: 'Next.js / Vercel', desc: 'Drop-in middleware.ts' },
+    { key: 'script', icon: <ApiOutlined />, title: 'Universal (Node / PHP)', desc: 'Any backend server' },
+    { key: 'nginx', icon: <GlobalOutlined />, title: 'Nginx / Apache', desc: 'VPS / self-hosted' },
   ]
+
+  const snippet =
+    method === 'worker'
+      ? snippetWorker(apiKey)
+      : method === 'middleware'
+      ? snippetMiddleware(apiKey)
+      : method === 'script'
+      ? snippetScript(apiKey)
+      : snippetNginx(apiKey)
+
+  const filename =
+    method === 'worker'
+      ? 'worker.js'
+      : method === 'middleware'
+      ? 'middleware.ts'
+      : method === 'script'
+      ? 'server.js (or index.php)'
+      : 'nginx.conf / .htaccess'
 
   return (
     <Card title="Choose an integration method">
       <Row gutter={16}>
         {cards.map((c) => (
-          <Col xs={24} md={8} key={c.key}>
+          <Col xs={12} md={6} key={c.key}>
             <Card
               hoverable
               onClick={() => setMethod(c.key)}
@@ -175,66 +323,29 @@ function StepMethod({
                 borderColor: method === c.key ? BRAND : undefined,
                 borderWidth: method === c.key ? 2 : 1,
               }}
+              styles={{ body: { padding: 16 } }}
             >
-              <div style={{ fontSize: 28, color: BRAND }}>{c.icon}</div>
-              <Title level={5} style={{ marginTop: 8 }}>
+              <div style={{ fontSize: 26, color: BRAND }}>{c.icon}</div>
+              <Title level={5} style={{ marginTop: 8, marginBottom: 2 }}>
                 {c.title}
               </Title>
-              <Text type="secondary">{c.desc}</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                {c.desc}
+              </Text>
             </Card>
           </Col>
         ))}
       </Row>
 
-      <div style={{ marginTop: 16 }}>
-        {method === 'dns' && (
-          <Alert
-            type="info"
-            showIcon
-            message="Add this CNAME record at your DNS provider"
-            description={
-              <Paragraph copyable={{ text: `${domain} CNAME proxy.renderfast.io` }} style={{ marginBottom: 0 }}>
-                <Text code>{domain}</Text> → <Text code>proxy.renderfast.io</Text>
-              </Paragraph>
-            }
-          />
-        )}
-        {method === 'middleware' && (
-          <CodeBlock
-            title="middleware.ts"
-            code={`import { NextResponse } from 'next/server'
+      <Alert
+        type="info"
+        showIcon
+        style={{ marginBottom: 4 }}
+        message="How it works"
+        description="The snippet runs on your server/edge, detects crawler User-Agents, and serves them prerendered HTML from RenderFast. Real visitors are passed straight through to your site — zero impact on them."
+      />
 
-export async function middleware(req) {
-  const ua = req.headers.get('user-agent') || ''
-  const isBot = /googlebot|bingbot|gptbot|claudebot|perplexitybot/i.test(ua)
-  if (isBot) {
-    return NextResponse.rewrite(
-      'https://proxy.renderfast.io/api/proxy?url=' +
-        encodeURIComponent(req.url)
-    )
-  }
-  return NextResponse.next()
-}`}
-          />
-        )}
-        {method === 'wordpress' && (
-          <div>
-            <Button
-              type="primary"
-              icon={<DownloadOutlined />}
-              href="/wp-plugin.zip"
-              style={{ background: BRAND, borderColor: BRAND, marginBottom: 12 }}
-            >
-              Download Plugin
-            </Button>
-            <ol style={{ paddingLeft: 20, color: '#555' }}>
-              <li>Go to WordPress Admin → Plugins → Add New → Upload Plugin</li>
-              <li>Upload the downloaded <Text code>wp-plugin.zip</Text></li>
-              <li>Activate, then paste your API key in RenderFast settings</li>
-            </ol>
-          </div>
-        )}
-      </div>
+      <CodeBlock title={filename} code={snippet} />
 
       <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between' }}>
         <Button onClick={onBack}>Back</Button>
@@ -303,8 +414,8 @@ function StepApiKey({
             }
           />
           <CodeBlock
-            title="Example request"
-            code={`curl -X POST https://proxy.renderfast.io/api/render \\
+            title="Test it (renders any URL on demand)"
+            code={`curl -X POST ${APP_URL}/api/render \\
   -H "x-api-key: ${visible ? apiKey : 'YOUR_API_KEY'}" \\
   -H "Content-Type: application/json" \\
   -d '{"url":"https://example.com"}'`}

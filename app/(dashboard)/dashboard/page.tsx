@@ -15,6 +15,7 @@ import {
   Tag,
   Typography,
   Space,
+  Alert,
 } from 'antd'
 import {
   ThunderboltOutlined,
@@ -44,44 +45,25 @@ interface Analytics {
   usageStats: { renderCount: number; renderLimit: number; percentUsed: number; resetAt: string }
 }
 
-// Fixed reference instant so demo timestamps are deterministic (server === client,
-// avoiding hydration mismatches from Date.now()).
-const DEMO_BASE = Date.UTC(2026, 5, 16, 12, 0, 0)
-
-// Hardcoded demo fallback used when the API returns empty.
-const DEMO: Analytics = {
+// Empty shape rendered before data loads or when the account has no activity yet.
+// (No fake numbers — real analytics come from /api/analytics.)
+const EMPTY: Analytics = {
   summary: {
-    totalBotRequests: 12840,
-    uniqueUrls: 342,
-    cacheHitRate: 87,
-    avgResponseTime: 412,
-    totalRenders: 9120,
+    totalBotRequests: 0,
+    uniqueUrls: 0,
+    cacheHitRate: 0,
+    avgResponseTime: 0,
+    totalRenders: 0,
   },
-  botTimeline: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => ({
-    date: d,
-    googlebot: 400 + i * 60,
-    gptbot: 120 + i * 30,
-    bingbot: 80 + i * 10,
-    others: 60 + i * 5,
-  })),
-  botTypeSplit: { search: 7200, ai: 3800, social: 1400, unknown: 440 },
-  topPages: Array.from({ length: 5 }, (_, i) => ({
-    url: `/page-${i + 1}`,
-    hits: 900 - i * 120,
-    uniqueBots: 8 - i,
-    lastCrawled: new Date(DEMO_BASE - i * 3600_000).toISOString(),
-    cacheHit: i % 2 === 0,
-  })),
-  renderTrend: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => ({
-    date: d,
-    renders: 800 + i * 90,
-    cacheHits: 600 + i * 70,
-  })),
+  botTimeline: [],
+  botTypeSplit: { search: 0, ai: 0, social: 0, unknown: 0 },
+  topPages: [],
+  renderTrend: [],
   usageStats: {
-    renderCount: 9120,
-    renderLimit: 25000,
-    percentUsed: 36,
-    resetAt: new Date(DEMO_BASE + 18 * 86400_000).toISOString(),
+    renderCount: 0,
+    renderLimit: 0,
+    percentUsed: 0,
+    resetAt: new Date(Date.UTC(2026, 0, 1)).toISOString(),
   },
 }
 
@@ -119,11 +101,10 @@ export default function DashboardPage() {
         params.set('end_date', range[1].toISOString())
       }
       const res = await fetch(`/api/analytics?${params}`)
-      const json: Analytics & { demo?: boolean } = await res.json()
-      // Fall back to demo data if API has nothing real yet.
-      setData(json.demo || json.summary.totalRenders === 0 ? DEMO : json)
+      const json: Analytics = await res.json()
+      setData(json?.summary ? json : EMPTY)
     } catch {
-      setData(DEMO)
+      setData(EMPTY)
     } finally {
       setLoading(false)
     }
@@ -133,7 +114,8 @@ export default function DashboardPage() {
     load()
   }, [load])
 
-  const d = data ?? DEMO
+  const d = data ?? EMPTY
+  const hasActivity = d.summary.totalRenders > 0 || d.summary.totalBotRequests > 0
 
   return (
     <div style={{ padding: 24 }}>
@@ -163,6 +145,25 @@ export default function DashboardPage() {
           <RangePicker onChange={(v) => setRange(v as [Dayjs, Dayjs] | null)} />
         </Space>
       </div>
+
+      {/* ── Empty state ─────────────────────────────────────────────────────── */}
+      {!loading && !hasActivity && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 20 }}
+          message="No bot activity yet"
+          description={
+            <span>
+              Add a domain and finish an integration so search &amp; AI crawlers are served
+              prerendered HTML. Then real analytics will appear here.{' '}
+              <Link href="/integration-wizard" style={{ color: BRAND, fontWeight: 600 }}>
+                Open the Integration Wizard →
+              </Link>
+            </span>
+          }
+        />
+      )}
 
       {/* ── Usage card ──────────────────────────────────────────────────────── */}
       <Card style={{ marginBottom: 20 }}>

@@ -64,7 +64,7 @@ export const supabaseAdmin = new Proxy({} as AdminClient, {
 // ══════════════════════════════════════════════════════════════════════════════
 export type Plan = 'free' | 'starter' | 'pro' | 'agency'
 export type SiteStatus = 'active' | 'inactive' | 'pending'
-export type IntegrationType = 'dns' | 'middleware' | 'wordpress'
+export type IntegrationType = 'script' | 'middleware' | 'worker' | 'nginx' | 'dns' | 'wordpress'
 export type BotType = 'search' | 'ai' | 'social' | 'unknown'
 export type SitemapStatus = 'active' | 'paused' | 'error'
 export type QueueStatus = 'pending' | 'rendering' | 'completed' | 'failed'

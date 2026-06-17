@@ -33,7 +33,7 @@ create table if not exists public.sites (
   user_id          uuid not null references public.users(id) on delete cascade,
   domain           text not null,
   name             text,
-  integration_type text check (integration_type in ('dns', 'middleware', 'wordpress')),
+  integration_type text check (integration_type in ('script', 'middleware', 'worker', 'nginx', 'dns', 'wordpress')),
   status           text not null default 'pending' check (status in ('active', 'inactive', 'pending')),
   render_count     integer not null default 0,
   created_at       timestamptz not null default now(),

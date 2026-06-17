@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   Row,
   Col,
@@ -9,32 +10,31 @@ import {
   Modal,
   Form,
   Input,
-  Tag,
   Badge,
-  Popconfirm,
-  Drawer,
-  Empty,
-  Statistic,
+  Tooltip,
+  Skeleton,
   Typography,
-  Space,
-  Select,
   message,
 } from 'antd'
 import {
-  PlusOutlined,
+  PlusCircleFilled,
   GlobalOutlined,
-  SettingOutlined,
-  DeleteOutlined,
+  CaretRightFilled,
+  AppstoreOutlined,
+  UnorderedListOutlined,
 } from '@ant-design/icons'
+
 const BRAND = '#2da01d'
 const { Title, Text } = Typography
+
+type IntegrationType = 'script' | 'middleware' | 'worker' | 'nginx' | 'dns' | 'wordpress'
 
 interface Site {
   id: string
   domain: string
   name: string | null
   status: 'active' | 'pending' | 'inactive'
-  integration_type: 'dns' | 'middleware' | 'wordpress' | null
+  integration_type: IntegrationType | null
   render_count: number
 }
 
@@ -44,19 +44,14 @@ const STATUS_BADGE: Record<Site['status'], 'success' | 'warning' | 'default'> = 
   inactive: 'default',
 }
 
-const INTEGRATION_LABEL: Record<string, string> = {
-  dns: 'DNS',
-  middleware: 'Middleware',
-  wordpress: 'WordPress',
-}
-
 export default function DomainManagerPage() {
+  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [sites, setSites] = useState<Site[]>([])
   const [limit, setLimit] = useState<number | null>(null)
+  const [view, setView] = useState<'grid' | 'list'>('grid')
   const [addOpen, setAddOpen] = useState(false)
   const [adding, setAdding] = useState(false)
-  const [settingsSite, setSettingsSite] = useState<Site | null>(null)
   const [form] = Form.useForm()
 
   const load = useCallback(async () => {
@@ -67,7 +62,7 @@ export default function DomainManagerPage() {
       setSites(json.sites ?? [])
       setLimit(json.limit ?? null)
     } catch {
-      message.error('Failed to load domains')
+      message.error('Failed to load sites')
     } finally {
       setLoading(false)
     }
@@ -87,142 +82,137 @@ export default function DomainManagerPage() {
       })
       const data = await res.json()
       if (!res.ok) {
-        message.error(data.error ?? 'Failed to add domain')
+        message.error(data.error ?? 'Failed to add site')
         return
       }
-      message.success('Domain added')
+      message.success('Site added')
       setAddOpen(false)
       form.resetFields()
       await load()
+      // Jump straight into the new site's details.
+      if (data.site?.id) router.push(`/domain-manager/${data.site.id}`)
     } finally {
       setAdding(false)
     }
   }
 
-  async function deleteSite(id: string) {
-    const res = await fetch(`/api/sites/${id}`, { method: 'DELETE' })
-    if (res.ok) {
-      message.success('Domain deleted')
-      await load()
-    } else {
-      message.error('Delete failed')
-    }
-  }
-
-  const usageText =
-    limit === null ? `Using ${sites.length} websites` : `Using ${sites.length} of ${limit} websites`
+  const atLimit = limit !== null && sites.length >= limit
+  const open = (id: string) => router.push(`/domain-manager/${id}`)
 
   return (
     <div style={{ padding: 24 }}>
+      {/* ── Header ───────────────────────────────────────────────────────────── */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 12,
-          marginBottom: 20,
+          borderBottom: '1px solid #f0f0f0',
+          paddingBottom: 12,
+          marginBottom: 24,
         }}
       >
-        <div>
-          <Title level={3} style={{ margin: 0 }}>
-            My Domains
-          </Title>
-          <Text type="secondary">{usageText}</Text>
-        </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setAddOpen(true)}
-          style={{ background: BRAND, borderColor: BRAND }}
-          disabled={limit !== null && sites.length >= limit}
-        >
-          Add Domain
-        </Button>
+        <Title level={3} style={{ margin: 0, fontWeight: 500 }}>
+          My Sites
+        </Title>
+        <Button.Group>
+          <Tooltip title="Grid view">
+            <Button
+              type={view === 'grid' ? 'primary' : 'default'}
+              icon={<AppstoreOutlined />}
+              onClick={() => setView('grid')}
+              style={view === 'grid' ? { background: BRAND, borderColor: BRAND } : undefined}
+            />
+          </Tooltip>
+          <Tooltip title="List view">
+            <Button
+              type={view === 'list' ? 'primary' : 'default'}
+              icon={<UnorderedListOutlined />}
+              onClick={() => setView('list')}
+              style={view === 'list' ? { background: BRAND, borderColor: BRAND } : undefined}
+            />
+          </Tooltip>
+        </Button.Group>
       </div>
 
-      {/* ── Domain grid / empty state ───────────────────────────────────────── */}
-      {!loading && sites.length === 0 ? (
-        <Card>
-          <Empty
-            image={<GlobalOutlined style={{ fontSize: 64, color: '#d9d9d9' }} />}
-            description="No domains yet"
-          >
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={() => setAddOpen(true)}
-              style={{ background: BRAND, borderColor: BRAND }}
-            >
-              Add your first domain
-            </Button>
-          </Empty>
-        </Card>
-      ) : (
-        <Row gutter={[16, 16]}>
-          {sites.map((site) => (
-            <Col xs={24} lg={12} key={site.id}>
-              <Card loading={loading}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-                  <div>
-                    <Space>
-                      <Text strong style={{ fontSize: 16 }}>
-                        {site.domain}
-                      </Text>
-                      <Badge status={STATUS_BADGE[site.status]} text={site.status} />
-                    </Space>
-                    <div style={{ marginTop: 6 }}>
-                      {site.integration_type ? (
-                        <Tag color="blue">{INTEGRATION_LABEL[site.integration_type]}</Tag>
-                      ) : (
-                        <Tag>No integration</Tag>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <Row gutter={16} style={{ marginTop: 16 }}>
-                  <Col span={8}>
-                    <Statistic title="Renders" value={site.render_count} valueStyle={{ fontSize: 18 }} />
-                  </Col>
-                  <Col span={8}>
-                    <Statistic title="Cached" value={0} valueStyle={{ fontSize: 18 }} />
-                  </Col>
-                  <Col span={8}>
-                    <Statistic title="Last Activity" value="—" valueStyle={{ fontSize: 18 }} />
-                  </Col>
-                </Row>
-
-                <Space style={{ marginTop: 16 }}>
-                  <Button icon={<SettingOutlined />} onClick={() => setSettingsSite(site)}>
-                    Settings
-                  </Button>
-                  <Popconfirm
-                    title="Delete this domain?"
-                    description="Cache and analytics will be removed."
-                    onConfirm={() => deleteSite(site.id)}
-                    okText="Delete"
-                    okButtonProps={{ danger: true }}
-                  >
-                    <Button danger icon={<DeleteOutlined />}>
-                      Delete
-                    </Button>
-                  </Popconfirm>
-                </Space>
+      {loading ? (
+        <Row gutter={[20, 20]}>
+          {[0, 1, 2].map((i) => (
+            <Col xs={24} sm={12} lg={8} key={i}>
+              <Card style={{ minHeight: 180 }}>
+                <Skeleton active paragraph={{ rows: 2 }} />
               </Card>
             </Col>
           ))}
         </Row>
+      ) : view === 'grid' ? (
+        <Row gutter={[20, 20]}>
+          {sites.map((site) => (
+            <Col xs={24} sm={12} lg={8} key={site.id}>
+              <SiteCard site={site} onOpen={() => open(site.id)} />
+            </Col>
+          ))}
+          {!atLimit && (
+            <Col xs={24} sm={12} lg={8}>
+              <AddCard onClick={() => setAddOpen(true)} />
+            </Col>
+          )}
+        </Row>
+      ) : (
+        <Card styles={{ body: { padding: 0 } }}>
+          {sites.map((site, i) => (
+            <div
+              key={site.id}
+              onClick={() => open(site.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '16px 20px',
+                cursor: 'pointer',
+                borderTop: i === 0 ? 'none' : '1px solid #f0f0f0',
+              }}
+            >
+              <div>
+                <Text strong style={{ fontSize: 15 }}>
+                  {site.name || site.domain}
+                </Text>
+                <div style={{ fontSize: 13, color: '#6b7280' }}>{site.domain}</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <Badge status={STATUS_BADGE[site.status]} text={site.status} />
+                <CaretRightFilled style={{ color: BRAND, fontSize: 18 }} />
+              </div>
+            </div>
+          ))}
+          {!atLimit && (
+            <div
+              onClick={() => setAddOpen(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '16px 20px',
+                cursor: 'pointer',
+                borderTop: sites.length ? '1px solid #f0f0f0' : 'none',
+                color: BRAND,
+                fontWeight: 600,
+              }}
+            >
+              <PlusCircleFilled /> Add a new site
+            </div>
+          )}
+        </Card>
       )}
 
-      {/* ── Add domain modal ────────────────────────────────────────────────── */}
+      {/* ── Add site modal ───────────────────────────────────────────────────── */}
       <Modal
-        title="Add Domain"
+        title="Add a new site"
         open={addOpen}
         onCancel={() => setAddOpen(false)}
         onOk={() => form.submit()}
         confirmLoading={adding}
-        okText="Add"
+        okText="Add site"
         okButtonProps={{ style: { background: BRAND, borderColor: BRAND } }}
       >
         <Form form={form} layout="vertical" onFinish={addDomain} requiredMark={false}>
@@ -237,102 +227,64 @@ export default function DomainManagerPage() {
               },
             ]}
           >
-            <Input prefix={<GlobalOutlined />} placeholder="example.com" />
+            <Input prefix={<GlobalOutlined />} placeholder="example.com" size="large" />
           </Form.Item>
-          <Form.Item name="name" label="Site Name" rules={[{ required: true, message: 'Enter a name' }]}>
-            <Input placeholder="My Marketing Site" />
+          <Form.Item name="name" label="Site name" rules={[{ required: true, message: 'Enter a name' }]}>
+            <Input placeholder="My Website" size="large" />
           </Form.Item>
         </Form>
       </Modal>
-
-      {/* ── Settings drawer ─────────────────────────────────────────────────── */}
-      <Drawer
-        title={settingsSite ? `Settings — ${settingsSite.domain}` : 'Settings'}
-        open={!!settingsSite}
-        onClose={() => setSettingsSite(null)}
-        width={420}
-      >
-        {settingsSite && (
-          <SiteSettings
-            site={settingsSite}
-            onSaved={async () => {
-              setSettingsSite(null)
-              await load()
-            }}
-          />
-        )}
-      </Drawer>
     </div>
   )
 }
 
-function SiteSettings({ site, onSaved }: { site: Site; onSaved: () => void }) {
-  const [saving, setSaving] = useState(false)
-
-  async function save(values: {
-    name: string
-    status: Site['status']
-    integration_type: Site['integration_type']
-  }) {
-    setSaving(true)
-    try {
-      const res = await fetch(`/api/sites/${site.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
-      })
-      if (res.ok) {
-        message.success('Saved')
-        onSaved()
-      } else {
-        message.error('Save failed')
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
+// ── Site card (grid) ──────────────────────────────────────────────────────────
+function SiteCard({ site, onOpen }: { site: Site; onOpen: () => void }) {
   return (
-    <Form
-      layout="vertical"
-      onFinish={save}
-      initialValues={{
-        name: site.name ?? '',
-        status: site.status,
-        integration_type: site.integration_type ?? undefined,
+    <Card
+      hoverable
+      onClick={onOpen}
+      style={{ minHeight: 180, position: 'relative' }}
+      styles={{ body: { height: 180, display: 'flex', flexDirection: 'column' } }}
+    >
+      <div style={{ flex: 1 }}>
+        <Title level={4} style={{ margin: 0, color: '#1f2937' }}>
+          {site.name || site.domain}
+        </Title>
+        <Text type="secondary">{site.domain}</Text>
+        <div style={{ marginTop: 10 }}>
+          <Badge status={STATUS_BADGE[site.status]} text={site.status} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <Tooltip title="Open details">
+          <CaretRightFilled style={{ color: BRAND, fontSize: 26 }} />
+        </Tooltip>
+      </div>
+    </Card>
+  )
+}
+
+// ── "Add a new site" card ─────────────────────────────────────────────────────
+function AddCard({ onClick }: { onClick: () => void }) {
+  return (
+    <Card
+      hoverable
+      onClick={onClick}
+      style={{ minHeight: 180, border: `1px dashed ${BRAND}` }}
+      styles={{
+        body: {
+          height: 180,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 12,
+        },
       }}
     >
-      <Form.Item name="name" label="Site Name">
-        <Input />
-      </Form.Item>
-      <Form.Item name="status" label="Status">
-        <Select
-          options={[
-            { value: 'active', label: 'Active' },
-            { value: 'pending', label: 'Pending' },
-            { value: 'inactive', label: 'Inactive' },
-          ]}
-        />
-      </Form.Item>
-      <Form.Item name="integration_type" label="Integration Type">
-        <Select
-          allowClear
-          options={[
-            { value: 'dns', label: 'DNS Proxy' },
-            { value: 'middleware', label: 'Next.js Middleware' },
-            { value: 'wordpress', label: 'WordPress Plugin' },
-          ]}
-        />
-      </Form.Item>
-      <Button
-        type="primary"
-        htmlType="submit"
-        loading={saving}
-        block
-        style={{ background: BRAND, borderColor: BRAND }}
-      >
-        Save Changes
-      </Button>
-    </Form>
+      <Text style={{ color: BRAND, fontSize: 20, fontWeight: 700 }}>Add a new site</Text>
+      <PlusCircleFilled style={{ color: BRAND, fontSize: 34 }} />
+    </Card>
   )
 }

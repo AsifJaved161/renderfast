@@ -13,30 +13,31 @@ git push -u origin main
 1. Create project at supabase.com (free)
 2. Go to SQL Editor → run supabase/schema.sql
 3. Run supabase/schema_admin.sql
-4. Go to Authentication → URL Configuration:
+4. (Existing databases only) run supabase/migrations/001_integration_types.sql
+5. Go to Authentication → URL Configuration:
    - Site URL: https://YOUR_VERCEL_URL.vercel.app
    - Redirect URLs: https://YOUR_VERCEL_URL.vercel.app/api/auth/callback
 5. Copy: Project URL, anon key, service_role key
 
 ## Step 3: Cloudflare Setup
-OPTION A (Free — Stub Mode, no real rendering):
+OPTION A (Free — dev fallback, no real rendering):
 - Skip Cloudflare entirely for now
-- Leave CLOUDFLARE_BROWSER_RENDERING_URL empty
-- Stub mode activates automatically (see lib/renderer.ts)
+- Leave the CLOUDFLARE_* vars empty
+- A clearly-labelled "not configured" placeholder HTML is returned so the rest of
+  the app (domain add, cache, queue, analytics) is fully testable end-to-end.
 
 OPTION B ($5/mo — Real rendering):
 1. Add Cloudflare Workers Paid plan ($5/mo)
-2. Create KV namespace: Workers & Pages → KV → Create namespace "renderfast-cache"
-3. Copy namespace ID
-4. Create API token: Profile → API Tokens → Custom Token:
+2. Create KV namespace: Workers & Pages → KV → Create namespace "renderfast-cache" → copy its ID
+3. Create API token: Profile → API Tokens → Custom Token:
    Permissions: Workers KV Storage (Edit), Browser Rendering (Read)
-5. Copy Account ID (from any Cloudflare dashboard URL)
+4. Copy Account ID (from any Cloudflare dashboard URL)
 
-> **Important:** Stub mode stays ON until `CLOUDFLARE_BROWSER_RENDERING_URL` is set.
-> When enabling real rendering, you **must** fill in that variable (in addition to
-> `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`) — otherwise the app keeps
-> returning stub HTML. The default content endpoint is:
-> `https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/browser-rendering/content`
+> **Real rendering turns on automatically** once `CLOUDFLARE_ACCOUNT_ID` and
+> `CLOUDFLARE_API_TOKEN` are set — the content endpoint is derived from the account id:
+> `https://api.cloudflare.com/client/v4/accounts/<ACCOUNT_ID>/browser-rendering/content`.
+> `CLOUDFLARE_BROWSER_RENDERING_URL` is an **optional** override; leave it empty otherwise.
+> Set `CLOUDFLARE_KV_NAMESPACE_ID` too so cached HTML is stored/served.
 
 ## Step 4: Deploy to Vercel (Free)
 1. Go to vercel.com → New Project → Import from GitHub
@@ -85,12 +86,16 @@ RESEND_API_KEY=
 4. Go to /admin/login → sign in → you're admin
 
 ## Step 6: Attach a Test Domain
-METHOD A — Test on Vercel subdomain (easiest, no domain needed):
-- Your app is live at https://YOUR_PROJECT.vercel.app
-- In Domain Manager: add your test site as e.g. "mysite.com"
-- In Integration Wizard: choose "Middleware" method
-- Copy the middleware snippet into your test site's Next.js middleware
-- Test by visiting your site with Googlebot UA via proxy
+METHOD A — Add a domain + integrate (recommended):
+- In Domain Manager: add your site (e.g. "mysite.com")
+- In Integration Wizard: pick one of the 4 methods and copy its snippet:
+  - **Cloudflare Worker** — site already on Cloudflare
+  - **Next.js / Vercel** — drop-in middleware.ts
+  - **Universal (Node / PHP)** — any backend server
+  - **Nginx / Apache** — VPS / self-hosted
+- Each snippet detects crawler User-Agents and serves prerendered HTML from
+  `${NEXT_PUBLIC_APP_URL}/api/proxy`, passing your API key as `X-Prerender-Token`.
+- Real users are passed straight to your origin — zero impact.
 
 METHOD B — Attach a real domain to Vercel:
 1. Vercel → Project Settings → Domains → Add Domain
@@ -101,19 +106,27 @@ METHOD B — Attach a real domain to Vercel:
 5. Update NEXT_PUBLIC_SITE_URL (and NEXT_PUBLIC_APP_URL) in Vercel env vars to this domain
 6. Update Supabase redirect URL to match
 
-## Step 7: Test Prerendering (Stub Mode)
-Without Cloudflare Browser Rendering, test the flow:
+## Step 7: Test Prerendering
+Two ways to test the flow:
 ```bash
-# Simulate Googlebot hitting your site
+# A) Through the integration proxy (how crawlers actually hit it).
+#    The domain must be added in Domain Manager first.
 curl -H "User-Agent: Googlebot/2.1" \
-     -H "x-api-key: YOUR_API_KEY_FROM_SECURITY_PAGE" \
-     https://YOUR_APP.vercel.app/api/render?url=https://example.com
+     "https://YOUR_APP.vercel.app/api/proxy?url=https://YOUR_DOMAIN/"
+
+# B) On-demand render by API key (from the Security page).
+curl -X POST "https://YOUR_APP.vercel.app/api/render" \
+     -H "x-api-key: YOUR_API_KEY" \
+     -H "Content-Type: application/json" \
+     -d '{"url":"https://example.com"}'
 ```
-Expected: Returns stub HTML, logged to renders table, visible in Cache Manager.
+Expected: rendered HTML + an `X-Cache-Status: MISS|HIT` header, a row in the
+`renders` table, and the numbers showing up on the Dashboard / Render History.
 
 ## Step 8: Enable Real Rendering (When Ready)
 1. Add Cloudflare Workers Paid ($5/mo)
-2. Fill in all CLOUDFLARE_* env vars in Vercel (including CLOUDFLARE_BROWSER_RENDERING_URL — see Step 3 note)
+2. Set `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_KV_NAMESPACE_ID`
+   in Vercel (the rendering endpoint is derived automatically — see Step 3)
 3. Redeploy (Vercel auto-redeploys on env var change)
 
 ---

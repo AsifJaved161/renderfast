@@ -15,6 +15,53 @@ function dbBotType(t: string | null): 'search' | 'ai' | 'social' | 'unknown' {
   return t === 'search' || t === 'ai' || t === 'social' ? t : 'unknown'
 }
 
+interface Owner {
+  siteId: string
+  siteRenderCount: number
+  userId: string
+  renderCount: number
+  renderLimit: number
+}
+
+// Resolve the registered site (and its owner) for a target domain. The optional
+// token (api_key) is used to disambiguate if the same domain exists for >1 user.
+async function resolveOwner(domain: string, token: string | null): Promise<Owner | null> {
+  // Match the host with or without a leading "www." so example.com and
+  // www.example.com resolve to the same registered site.
+  const bare = domain.replace(/^www\./, '')
+  const candidates = Array.from(new Set([domain, bare, `www.${bare}`]))
+
+  const { data: sites } = await supabaseAdmin
+    .from('sites')
+    .select('id, user_id, render_count')
+    .in('domain', candidates)
+  if (!sites || sites.length === 0) return null
+
+  let site = sites[0]
+  if (token && sites.length > 1) {
+    const { data: u } = await supabaseAdmin
+      .from('users')
+      .select('id')
+      .eq('api_key', token)
+      .maybeSingle()
+    if (u) site = sites.find((s) => s.user_id === u.id) ?? site
+  }
+
+  const { data: user } = await supabaseAdmin
+    .from('users')
+    .select('render_count, render_limit')
+    .eq('id', site.user_id)
+    .maybeSingle()
+
+  return {
+    siteId: site.id,
+    siteRenderCount: site.render_count ?? 0,
+    userId: site.user_id,
+    renderCount: user?.render_count ?? 0,
+    renderLimit: user?.render_limit ?? 0,
+  }
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const targetUrl = req.headers.get('x-target-url') ?? searchParams.get('url')
@@ -33,7 +80,7 @@ export async function GET(req: NextRequest) {
   const ua = req.headers.get('user-agent') ?? ''
   const bot = detectBot(ua)
 
-  // ── Non-bot: passthrough ────────────────────────────────────────────────────
+  // ── Non-bot: tell the integration to serve the original page ─────────────────
   if (!bot.isBot) {
     return NextResponse.json(
       { passthrough: true, message: 'Not a bot — serve original page' },
@@ -41,51 +88,137 @@ export async function GET(req: NextRequest) {
     )
   }
 
+  const token = req.headers.get('x-prerender-token') ?? req.headers.get('x-api-key')
+  const owner = await resolveOwner(domain, token)
+
+  // Unregistered domain → don't render foreign sites; send the bot to origin.
+  if (!owner) {
+    return NextResponse.redirect(targetUrl, 302)
+  }
+
+  // Over the monthly render limit → fall back to origin (no error to the bot).
+  if (owner.renderLimit > 0 && owner.renderCount >= owner.renderLimit) {
+    return NextResponse.redirect(targetUrl, 302)
+  }
+
   const wantsMarkdown =
     bot.botType === 'ai' && (req.headers.get('accept') ?? '').includes('text/markdown')
 
-  // ── Bot: check KV cache ─────────────────────────────────────────────────────
+  // ── Cache hit ────────────────────────────────────────────────────────────────
   const cached = await getCachedPage(domain, targetUrl)
   if (cached) {
-    logVisit(domain, targetUrl, bot, ua, req, wantsMarkdown)
-
-    // Stale-while-revalidate: re-render in the background if expired in DB
+    logRender(owner, domain, targetUrl, bot, ua, req, wantsMarkdown, true, 0, 200)
     revalidateIfExpired(domain, targetUrl)
-
-    if (wantsMarkdown) {
-      return new NextResponse(htmlToMarkdown(cached), {
-        status: 200,
-        headers: { ...BASE_HEADERS, 'Content-Type': 'text/markdown; charset=utf-8', 'X-Cache-Status': 'HIT' },
-      })
-    }
-    return new NextResponse(cached, {
-      status: 200,
-      headers: { ...BASE_HEADERS, 'Content-Type': 'text/html; charset=utf-8', 'X-Cache-Status': 'HIT' },
-    })
+    return serve(cached, wantsMarkdown, 'HIT', 200)
   }
 
   // ── Cache miss: render now ──────────────────────────────────────────────────
-  const { html, statusCode, error } = await renderPage(targetUrl)
+  const { html, renderTimeMs, statusCode, error } = await renderPage(targetUrl)
   if (error || !html) {
     return NextResponse.redirect(targetUrl, 302)
   }
 
   await setCachedPage(domain, targetUrl, html, CACHE_TTL)
-  logVisit(domain, targetUrl, bot, ua, req, wantsMarkdown)
+  await persistRender(owner, domain, parsed, html, renderTimeMs, statusCode)
+  logRender(owner, domain, targetUrl, bot, ua, req, wantsMarkdown, false, renderTimeMs, statusCode)
 
-  if (wantsMarkdown) {
-    return new NextResponse(htmlToMarkdown(html), {
-      status: statusCode,
-      headers: { ...BASE_HEADERS, 'Content-Type': 'text/markdown; charset=utf-8', 'X-Cache-Status': 'MISS' },
-    })
-  }
-  return new NextResponse(html, {
-    status: statusCode,
-    headers: { ...BASE_HEADERS, 'Content-Type': 'text/html; charset=utf-8', 'X-Cache-Status': 'MISS' },
+  return serve(html, wantsMarkdown, 'MISS', statusCode)
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────────
+function serve(html: string, wantsMarkdown: boolean, cacheStatus: 'HIT' | 'MISS', status: number) {
+  const body = wantsMarkdown ? htmlToMarkdown(html) : html
+  const contentType = wantsMarkdown ? 'text/markdown; charset=utf-8' : 'text/html; charset=utf-8'
+  return new NextResponse(body, {
+    status,
+    headers: { ...BASE_HEADERS, 'Content-Type': contentType, 'X-Cache-Status': cacheStatus },
   })
 }
 
-// ── Background re-render when the DB record says the cache expired ────────────
+// Bill the render: bump counters + write cache_entries metadata.
+async function persistRender(
+  owner: Owner,
+  domain: string,
+  parsed: URL,
+  html: string,
+  renderTimeMs: number,
+  statusCode: number
+) {
+  try {
+    await supabaseAdmin
+      .from('users')
+      .update({ render_count: owner.renderCount + 1 })
+      .eq('id', owner.userId)
+
+    await supabaseAdmin
+      .from('sites')
+      .update({ render_count: owner.siteRenderCount + 1 })
+      .eq('id', owner.siteId)
+
+    await supabaseAdmin.from('cache_entries').upsert(
+      {
+        site_id: owner.siteId,
+        user_id: owner.userId,
+        url: parsed.toString(),
+        url_hash: `${domain}:${parsed.pathname}${parsed.search}`,
+        status_code: statusCode,
+        html_size_bytes: Buffer.byteLength(html, 'utf8'),
+        render_time_ms: renderTimeMs,
+        cached_at: new Date().toISOString(),
+        expires_at: new Date(Date.now() + CACHE_TTL * 1000).toISOString(),
+        is_mobile: false,
+      },
+      { onConflict: 'url_hash' }
+    )
+  } catch {
+    // billing/metadata must never break the served response
+  }
+}
+
+// Write renders + bot_visits rows for analytics (never blocks the response).
+function logRender(
+  owner: Owner,
+  domain: string,
+  url: string,
+  bot: ReturnType<typeof detectBot>,
+  ua: string,
+  req: NextRequest,
+  servedMarkdown: boolean,
+  cacheHit: boolean,
+  renderTimeMs: number,
+  statusCode: number
+) {
+  ;(async () => {
+    try {
+      const ip = req.headers.get('x-forwarded-for')
+      await supabaseAdmin.from('renders').insert({
+        site_id: owner.siteId,
+        user_id: owner.userId,
+        url,
+        bot_name: bot.botName,
+        bot_type: dbBotType(bot.botType),
+        status_code: statusCode,
+        render_time_ms: renderTimeMs || null,
+        cache_hit: cacheHit,
+        user_agent: ua,
+        ip_address: ip,
+      })
+      await supabaseAdmin.from('bot_visits').insert({
+        site_id: owner.siteId,
+        url,
+        bot_name: bot.botName,
+        bot_type: dbBotType(bot.botType),
+        user_agent: ua,
+        ip_address: ip,
+        served_markdown: servedMarkdown,
+      })
+    } catch {
+      // analytics must never block the response
+    }
+  })()
+}
+
+// Background re-render when the DB record says the cache expired.
 function revalidateIfExpired(domain: string, url: string) {
   ;(async () => {
     try {
@@ -93,7 +226,7 @@ function revalidateIfExpired(domain: string, url: string) {
         .from('cache_entries')
         .select('expires_at')
         .eq('url', url)
-        .single()
+        .maybeSingle()
       if (data?.expires_at && new Date(data.expires_at) > new Date()) return
 
       const { html, error } = await renderPage(url)
@@ -109,37 +242,6 @@ function revalidateIfExpired(domain: string, url: string) {
       }
     } catch {
       // never blocks the served response
-    }
-  })()
-}
-
-function logVisit(
-  domain: string,
-  url: string,
-  bot: ReturnType<typeof detectBot>,
-  ua: string,
-  req: NextRequest,
-  servedMarkdown: boolean
-) {
-  ;(async () => {
-    try {
-      const { data: site } = await supabaseAdmin
-        .from('sites')
-        .select('id')
-        .eq('domain', domain)
-        .single()
-      if (!site) return
-      await supabaseAdmin.from('bot_visits').insert({
-        site_id: site.id,
-        url,
-        bot_name: bot.botName,
-        bot_type: dbBotType(bot.botType),
-        user_agent: ua,
-        ip_address: req.headers.get('x-forwarded-for'),
-        served_markdown: servedMarkdown,
-      })
-    } catch {
-      // analytics must never block the response
     }
   })()
 }

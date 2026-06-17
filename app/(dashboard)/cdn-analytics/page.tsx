@@ -41,42 +41,24 @@ interface Analytics {
   topPages: { url: string; hits: number; uniqueBots: number; lastCrawled: string; cacheHit: boolean }[]
 }
 
-const DEMO: Analytics = {
+// Empty shape — real data comes from /api/analytics. No fake numbers.
+const EMPTY: Analytics = {
   summary: {
-    totalBotRequests: 18420,
-    uniqueUrls: 512,
-    cacheHitRate: 89,
-    avgResponseTime: 386,
-    totalRenders: 14200,
+    totalBotRequests: 0,
+    uniqueUrls: 0,
+    cacheHitRate: 0,
+    avgResponseTime: 0,
+    totalRenders: 0,
   },
-  botTimeline: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d, i) => ({
-    date: d,
-    googlebot: 500 + i * 70,
-    gptbot: 180 + i * 40,
-    bingbot: 120 + i * 15,
-    others: 90 + i * 8,
-  })),
-  topCrawlers: [
-    { botName: 'Googlebot', requests: 7200, percentage: 39 },
-    { botName: 'GPTBot', requests: 3800, percentage: 21 },
-    { botName: 'Bingbot', requests: 2600, percentage: 14 },
-    { botName: 'ClaudeBot', requests: 1900, percentage: 10 },
-    { botName: 'PerplexityBot', requests: 1400, percentage: 8 },
-    { botName: 'Others', requests: 1520, percentage: 8 },
-  ],
-  botTypeSplit: { search: 10200, ai: 5600, social: 2100, unknown: 520 },
-  topPages: Array.from({ length: 12 }, (_, i) => ({
-    url: `/products/item-${i + 1}`,
-    hits: 1200 - i * 80,
-    uniqueBots: 10 - (i % 6),
-    lastCrawled: new Date(Date.now() - i * 5400_000).toISOString(),
-    cacheHit: i % 3 !== 0,
-  })),
+  botTimeline: [],
+  topCrawlers: [],
+  botTypeSplit: { search: 0, ai: 0, social: 0, unknown: 0 },
+  topPages: [],
 }
 
 export default function CdnAnalyticsPage() {
   const [loading, setLoading] = useState(true)
-  const [data, setData] = useState<Analytics>(DEMO)
+  const [data, setData] = useState<Analytics>(EMPTY)
   const [sites, setSites] = useState<{ id: string; domain: string }[]>([])
   const [siteId, setSiteId] = useState<string | undefined>()
   const [botType, setBotType] = useState<string | undefined>()
@@ -100,10 +82,10 @@ export default function CdnAnalyticsPage() {
         params.set('end_date', range[1].toISOString())
       }
       const res = await fetch(`/api/analytics?${params}`)
-      const json: Analytics & { demo?: boolean } = await res.json()
-      setData(json.demo || json.summary.totalBotRequests === 0 ? DEMO : json)
+      const json: Analytics = await res.json()
+      setData(json?.summary ? json : EMPTY)
     } catch {
-      setData(DEMO)
+      setData(EMPTY)
     } finally {
       setLoading(false)
     }

@@ -282,13 +282,13 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
 
   // ── Avatar dropdown ─────────────────────────────────────────────────────────
   const userMenu: MenuProps['items'] = [
-    { key: 'profile', icon: <UserOutlined />, label: 'Profile' },
+    { key: 'account', icon: <UserOutlined />, label: 'My Account' },
     { key: 'billing', icon: <CreditCardOutlined />, label: 'Billing' },
     { type: 'divider' },
     { key: 'logout', icon: <LogoutOutlined />, label: 'Logout', danger: true },
   ]
   const onUserMenu: MenuProps['onClick'] = ({ key }) => {
-    if (key === 'profile') router.push('/dashboard/settings')
+    if (key === 'account') router.push('/account')
     else if (key === 'billing') router.push('/dashboard/billing')
     else if (key === 'logout') handleLogout()
   }

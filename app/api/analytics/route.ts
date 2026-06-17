@@ -63,9 +63,9 @@ export async function GET(req: NextRequest) {
     resetAt: user?.monthly_reset_at ?? new Date(Date.now() + 30 * DAY).toISOString(),
   }
 
-  // ── No real data yet → return seed structure ─────────────────────────────────
+  // ── No real data yet → return zeroed structure ───────────────────────────────
   if ((renders?.length ?? 0) === 0 && (visits?.length ?? 0) === 0) {
-    return NextResponse.json(demoResponse(usageStats))
+    return NextResponse.json(emptyResponse(usageStats))
   }
 
   const allRenders = renders ?? []
@@ -201,8 +201,8 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// ── Demo/seed structure when there is no data yet ──────────────────────────────
-function demoResponse(usageStats: any) {
+// ── Zeroed structure when there is no data yet (real, not fake) ────────────────
+function emptyResponse(usageStats: any) {
   const today = new Date()
   const days = Array.from({ length: 7 }, (_, i) =>
     new Date(today.getTime() - (6 - i) * DAY).toISOString().slice(0, 10)
@@ -222,6 +222,5 @@ function demoResponse(usageStats: any) {
     renderHistory: [],
     renderTrend: days.map((date) => ({ date, renders: 0, cacheHits: 0 })),
     usageStats,
-    demo: true,
   }
 }

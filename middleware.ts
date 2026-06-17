@@ -1,57 +1,96 @@
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+// Dashboard-facing API namespaces whose route handlers read `x-user-id`.
+// For these we inject a verified user id from the session (see below).
+const INJECT_API_PREFIXES = [
+  '/api/sites',
+  '/api/analytics',
+  '/api/sitemaps',
+  '/api/queue',
+  '/api/broken-links',
+]
+
+function isInjectableApi(pathname: string): boolean {
+  return INJECT_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'))
+}
+
 export async function middleware(request: NextRequest) {
-  const response = NextResponse.next()
   const pathname = request.nextUrl.pathname
 
-  // Supabase isn't configured yet — skip auth gating instead of hard-crashing
-  // every request. Set NEXT_PUBLIC_SUPABASE_URL / _ANON_KEY in .env.local to enable.
+  // Strip any client-supplied x-user-id so it can never be spoofed.
+  const requestHeaders = new Headers(request.headers)
+  requestHeaders.delete('x-user-id')
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  // Supabase not configured yet — skip auth gating instead of crashing.
   if (!supabaseUrl || !supabaseAnonKey) {
     console.warn(
       '[middleware] Missing NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY — ' +
         'auth checks are disabled. Create .env.local from .env.local.example.'
     )
-    return response
+    return NextResponse.next({ request: { headers: requestHeaders } })
   }
 
-  const supabase = createServerClient(
-    supabaseUrl,
-    supabaseAnonKey,
-    {
-      cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value
-        },
-        set(name: string, value: string, options: Record<string, unknown>) {
-          response.cookies.set({ name, value, ...options })
-        },
-        remove(name: string, options: Record<string, unknown>) {
-          response.cookies.set({ name, value: '', ...options })
-        },
+  // Collect any session-refresh cookies Supabase wants to set, then apply them
+  // to whatever final response (next / redirect) we return.
+  const cookiesToApply: { name: string; value: string; options: CookieOptions }[] = []
+
+  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll()
       },
-    }
-  )
+      setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          request.cookies.set(name, value)
+          cookiesToApply.push({ name, value, options })
+        })
+      },
+    },
+  })
 
+  // getUser() verifies the JWT signature with Supabase (spoof-proof).
   const {
-    data: { session },
-  } = await supabase.auth.getSession()
+    data: { user },
+  } = await supabase.auth.getUser()
 
-  if (pathname.startsWith('/dashboard') && !session)
-    return NextResponse.redirect(new URL('/login', request.url))
+  // Inject the verified id for dashboard API routes.
+  if (user && isInjectableApi(pathname)) {
+    requestHeaders.set('x-user-id', user.id)
+  }
 
-  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login') && !session)
-    return NextResponse.redirect(new URL('/admin/login', request.url))
+  function finalize(res: NextResponse): NextResponse {
+    cookiesToApply.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
+    return res
+  }
 
-  if ((pathname === '/login' || pathname === '/signup') && session)
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+  // ── Page gating / redirects ──────────────────────────────────────────────────
+  if (pathname.startsWith('/dashboard') && !user)
+    return finalize(NextResponse.redirect(new URL('/login', request.url)))
 
-  return response
+  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login') && !user)
+    return finalize(NextResponse.redirect(new URL('/admin/login', request.url)))
+
+  if ((pathname === '/login' || pathname === '/signup') && user)
+    return finalize(NextResponse.redirect(new URL('/dashboard', request.url)))
+
+  return finalize(NextResponse.next({ request: { headers: requestHeaders } }))
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/admin/:path*', '/login', '/signup'],
+  matcher: [
+    '/dashboard/:path*',
+    '/admin/:path*',
+    '/login',
+    '/signup',
+    '/api/sites/:path*',
+    '/api/analytics',
+    '/api/sitemaps/:path*',
+    '/api/queue/:path*',
+    '/api/broken-links/:path*',
+  ],
 }

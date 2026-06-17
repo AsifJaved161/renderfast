@@ -52,7 +52,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
   if ('name' in body) updates.name = body.name
   if ('integration_type' in body) {
-    if (!['dns', 'middleware', 'wordpress', null].includes(body.integration_type)) {
+    const allowed = ['script', 'middleware', 'worker', 'nginx', 'dns', 'wordpress', null]
+    if (!allowed.includes(body.integration_type)) {
       return NextResponse.json({ error: 'Invalid integration_type' }, { status: 400 })
     }
     updates.integration_type = body.integration_type

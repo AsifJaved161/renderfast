@@ -15,19 +15,23 @@ export interface RenderResult {
   error?: string
 }
 
+// Cloudflare is "configured" when we have a token AND either an account id
+// (to build the default endpoint) or an explicit endpoint override.
+const CF_CONFIGURED =
+  !!API_TOKEN && (!!ACCOUNT_ID || !!process.env.CLOUDFLARE_BROWSER_RENDERING_URL)
+
 export async function renderPage(url: string, isMobile = false): Promise<RenderResult> {
-  // ── Stub mode ───────────────────────────────────────────────────────────────
-  // Without Cloudflare Browser Rendering configured, return fake HTML so the rest
-  // of the app (cache, queue, proxy, analytics) is fully testable end-to-end.
-  if (!process.env.CLOUDFLARE_BROWSER_RENDERING_URL) {
+  // ── Dev fallback (Cloudflare not configured) ─────────────────────────────────
+  // Only used when CLOUDFLARE_* env vars are absent, so local/dev work doesn't 500.
+  // In production with Cloudflare configured this branch never runs.
+  if (!CF_CONFIGURED) {
     const stubHtml = `<!DOCTYPE html>
 <html>
-<head><title>RenderFast Stub - ${url}</title><base href="${url}"></head>
+<head><title>RenderFast (not configured) - ${url}</title><base href="${url}"></head>
 <body>
-  <h1>RenderFast Stub Render</h1>
+  <h1>RenderFast — rendering not configured</h1>
   <p>URL: ${url}</p>
-  <p>This is a test render from RenderFast stub mode.</p>
-  <p>Configure CLOUDFLARE_BROWSER_RENDERING_URL for real rendering.</p>
+  <p>Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN to enable real rendering.</p>
 </body>
 </html>`
     return { html: stubHtml, renderTimeMs: 50, statusCode: 200 }
