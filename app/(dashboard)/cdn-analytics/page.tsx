@@ -13,7 +13,9 @@ import {
   Typography,
   Space,
   Skeleton,
+  Alert,
 } from 'antd'
+import Link from 'next/link'
 import {
   ThunderboltOutlined,
   LinkOutlined,
@@ -102,6 +104,8 @@ export default function CdnAnalyticsPage() {
     { label: 'Unknown', value: data.botTypeSplit.unknown, color: '#bfbfbf' },
   ]
 
+  const hasActivity = data.summary.totalBotRequests > 0 || data.summary.totalRenders > 0
+
   return (
     <div style={{ padding: 24 }}>
       {/* ── Filter bar ──────────────────────────────────────────────────────── */}
@@ -143,6 +147,25 @@ export default function CdnAnalyticsPage() {
           <RangePicker onChange={(v) => setRange(v as [Dayjs, Dayjs] | null)} />
         </Space>
       </div>
+
+      {/* ── Empty state ─────────────────────────────────────────────────────── */}
+      {!loading && !hasActivity && (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 20 }}
+          message="No crawler activity yet"
+          description={
+            <span>
+              Once a domain is integrated and search / AI crawlers start hitting it, their
+              requests, cache hits and most-crawled pages appear here.{' '}
+              <Link href="/integration-wizard" style={{ color: BRAND, fontWeight: 600 }}>
+                Open the Integration Wizard →
+              </Link>
+            </span>
+          }
+        />
+      )}
 
       {/* ── Summary cards ───────────────────────────────────────────────────── */}
       <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
@@ -233,7 +256,16 @@ export default function CdnAnalyticsPage() {
           dataSource={data.topPages}
           pagination={{ pageSize: 8, showSizeChanger: false }}
           columns={[
-            { title: 'URL', dataIndex: 'url', ellipsis: true },
+            {
+              title: 'URL',
+              dataIndex: 'url',
+              ellipsis: true,
+              render: (u: string) => (
+                <a href={u} target="_blank" rel="noopener noreferrer">
+                  {u}
+                </a>
+              ),
+            },
             {
               title: 'Total Hits',
               dataIndex: 'hits',

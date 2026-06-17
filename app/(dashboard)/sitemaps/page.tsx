@@ -4,54 +4,69 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Card,
   Button,
-  Modal,
-  Form,
-  Input,
   Select,
   Table,
-  Badge,
-  Popconfirm,
+  Tag,
   Tooltip,
   Space,
   Typography,
+  Empty,
   message,
   notification,
 } from 'antd'
 import {
-  PlusOutlined,
   ReloadOutlined,
-  PauseCircleOutlined,
-  PlayCircleOutlined,
-  DeleteOutlined,
+  ThunderboltOutlined,
+  GlobalOutlined,
 } from '@ant-design/icons'
 
 const BRAND = '#2da01d'
-const { Title } = Typography
+const { Title, Text } = Typography
 
 interface Site {
   id: string
   domain: string
+  name: string | null
 }
 
-interface Sitemap {
-  id: string
-  site_id: string
+interface SitemapMeta {
   sitemap_url: string
   urls_found: number
-  status: 'active' | 'paused' | 'error'
+  status: string
   last_crawled_at: string | null
 }
 
-const STATUS_BADGE: Record<Sitemap['status'], 'success' | 'warning' | 'error'> = {
-  active: 'success',
-  paused: 'warning',
-  error: 'error',
+type UrlStatus = 'pending' | 'rendering' | 'completed' | 'failed'
+
+interface UrlRow {
+  id: string
+  url: string
+  status: UrlStatus
+  statusCode: number | null
+  renderTimeMs: number | null
+  cached: boolean
+  error: string | null
+  attempts: number
+}
+
+interface Counts {
+  pending: number
+  rendering: number
+  completed: number
+  failed: number
+  total: number
+}
+
+const STATUS_TAG: Record<UrlStatus, { color: string; label: string }> = {
+  completed: { color: 'green', label: 'Rendered' },
+  rendering: { color: 'processing', label: 'Rendering' },
+  pending: { color: 'default', label: 'Queued' },
+  failed: { color: 'red', label: 'Failed' },
 }
 
 function relativeTime(iso: string | null) {
   if (!iso) return 'Never'
-  const diff = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(diff / 60000)
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
   if (mins < 1) return 'just now'
   if (mins < 60) return `${mins}m ago`
   const hrs = Math.floor(mins / 60)
@@ -60,214 +75,244 @@ function relativeTime(iso: string | null) {
 }
 
 export default function SitemapsPage() {
-  const [loading, setLoading] = useState(true)
-  const [rows, setRows] = useState<Sitemap[]>([])
   const [sites, setSites] = useState<Site[]>([])
-  const [addOpen, setAddOpen] = useState(false)
-  const [adding, setAdding] = useState(false)
-  const [crawlingId, setCrawlingId] = useState<string | null>(null)
-  const [form] = Form.useForm()
+  const [siteId, setSiteId] = useState<string | undefined>()
+  const [meta, setMeta] = useState<SitemapMeta | null>(null)
+  const [urls, setUrls] = useState<UrlRow[]>([])
+  const [counts, setCounts] = useState<Counts>({ pending: 0, rendering: 0, completed: 0, failed: 0, total: 0 })
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [statusFilter, setStatusFilter] = useState<UrlStatus | undefined>()
+  const [loading, setLoading] = useState(false)
+  const [fetching, setFetching] = useState(false)
+  const [rendering, setRendering] = useState(false)
+  const limit = 25
 
-  const domainOf = (id: string) => sites.find((s) => s.id === id)?.domain ?? '—'
+  // Load site list once; default to the first site.
+  useEffect(() => {
+    fetch('/api/sites')
+      .then((r) => r.json())
+      .then((d) => {
+        const list: Site[] = d.sites ?? []
+        setSites(list)
+        setSiteId((prev) => prev ?? list[0]?.id)
+      })
+      .catch(() => message.error('Failed to load sites'))
+  }, [])
 
-  const load = useCallback(async () => {
+  const loadUrls = useCallback(async () => {
+    if (!siteId) {
+      setUrls([])
+      setMeta(null)
+      return
+    }
     setLoading(true)
     try {
-      const [smRes, siteRes] = await Promise.all([
-        fetch('/api/sitemaps').then((r) => r.json()),
-        fetch('/api/sites').then((r) => r.json()),
+      const params = new URLSearchParams({ site_id: siteId, page: String(page), limit: String(limit) })
+      if (statusFilter) params.set('status', statusFilter)
+      const [urlRes, smRes] = await Promise.all([
+        fetch(`/api/sitemaps/urls?${params}`).then((r) => r.json()),
+        fetch(`/api/sitemaps?site_id=${siteId}`).then((r) => r.json()),
       ])
-      setRows(smRes.data ?? [])
-      setSites(siteRes.sites ?? [])
+      setUrls(urlRes.urls ?? [])
+      setTotal(urlRes.total ?? 0)
+      setCounts(urlRes.counts ?? { pending: 0, rendering: 0, completed: 0, failed: 0, total: 0 })
+      setMeta((smRes.data ?? [])[0] ?? null)
     } catch {
-      message.error('Failed to load sitemaps')
+      message.error('Failed to load URLs')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [siteId, page, statusFilter])
 
   useEffect(() => {
-    load()
-  }, [load])
+    loadUrls()
+  }, [loadUrls])
 
-  async function addSitemap(values: { site_id: string; sitemap_url: string }) {
-    setAdding(true)
+  // Reset to page 1 when the site or filter changes.
+  useEffect(() => {
+    setPage(1)
+  }, [siteId, statusFilter])
+
+  async function fetchSitemap() {
+    if (!siteId) return
+    setFetching(true)
     try {
-      const res = await fetch('/api/sitemaps', {
+      const res = await fetch('/api/sitemaps/auto', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(values),
+        body: JSON.stringify({ site_id: siteId }),
       })
       const data = await res.json()
       if (!res.ok) {
-        message.error(data.error ?? 'Failed to add sitemap')
-        return
-      }
-      message.success('Sitemap added')
-      setAddOpen(false)
-      form.resetFields()
-      await load()
-    } finally {
-      setAdding(false)
-    }
-  }
-
-  async function recrawl(row: Sitemap) {
-    setCrawlingId(row.id)
-    try {
-      const res = await fetch('/api/sitemaps/crawl', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sitemap_id: row.id, sitemap_url: row.sitemap_url }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        message.error(data.error ?? 'Crawl failed')
+        message.error(data.error ?? 'Could not fetch sitemap')
         return
       }
       notification.success({
-        message: 'Sitemap crawled',
-        description: `${data.queued} URLs queued for rendering.`,
+        message: 'Sitemap fetched',
+        description: `${data.found} URLs found · ${data.queued} newly queued.`,
       })
-      await load()
+      await loadUrls()
     } finally {
-      setCrawlingId(null)
+      setFetching(false)
     }
   }
 
-  async function toggleStatus(row: Sitemap) {
-    const next = row.status === 'paused' ? 'active' : 'paused'
-    const res = await fetch(`/api/sitemaps?id=${row.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: next }),
-    })
-    if (res.ok) {
-      message.success(next === 'paused' ? 'Paused' : 'Resumed')
-      await load()
-    } else {
-      message.error('Update failed')
+  // Render pending URLs in a few batches (the processor does 5 per call).
+  async function renderPending() {
+    setRendering(true)
+    try {
+      let totalProcessed = 0
+      for (let i = 0; i < 6; i++) {
+        const res = await fetch('/api/queue/process', { method: 'POST' })
+        if (!res.ok) break
+        const data = await res.json()
+        totalProcessed += data.processed ?? 0
+        if (!data.processed) break
+      }
+      if (totalProcessed > 0) message.success(`Rendered ${totalProcessed} URL(s)`)
+      else message.info('Nothing pending to render')
+      await loadUrls()
+    } finally {
+      setRendering(false)
     }
   }
 
-  async function deleteSitemap(id: string) {
-    const res = await fetch(`/api/sitemaps?id=${id}`, { method: 'DELETE' })
-    if (res.ok) {
-      message.success('Deleted')
-      await load()
-    } else {
-      message.error('Delete failed')
-    }
-  }
+  const chip = (label: string, value: number, color: string) => (
+    <Tag color={color} style={{ fontSize: 13, padding: '2px 10px' }}>
+      {label}: <strong>{value}</strong>
+    </Tag>
+  )
 
   return (
     <div style={{ padding: 24 }}>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: 20,
-        }}
-      >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
         <Title level={3} style={{ margin: 0 }}>
           Sitemaps
         </Title>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setAddOpen(true)}
-          style={{ background: BRAND, borderColor: BRAND }}
-        >
-          Add Sitemap
-        </Button>
+        <Space wrap>
+          <Select
+            placeholder="Select a site"
+            style={{ minWidth: 220 }}
+            value={siteId}
+            onChange={setSiteId}
+            options={sites.map((s) => ({ value: s.id, label: s.name || s.domain }))}
+          />
+          <Button icon={<ReloadOutlined />} loading={fetching} onClick={fetchSitemap} disabled={!siteId}>
+            Fetch sitemap
+          </Button>
+          <Button
+            type="primary"
+            icon={<ThunderboltOutlined />}
+            loading={rendering}
+            onClick={renderPending}
+            disabled={!siteId || counts.pending === 0}
+            style={{ background: BRAND, borderColor: BRAND }}
+          >
+            Render pending{counts.pending ? ` (${counts.pending})` : ''}
+          </Button>
+        </Space>
       </div>
 
-      <Card>
-        <Table<Sitemap>
-          loading={loading}
-          rowKey="id"
-          dataSource={rows}
-          columns={[
-            { title: 'Sitemap URL', dataIndex: 'sitemap_url', ellipsis: true },
-            {
-              title: 'Domain',
-              dataIndex: 'site_id',
-              width: 180,
-              render: (id: string) => domainOf(id),
-            },
-            { title: 'URLs Found', dataIndex: 'urls_found', width: 120 },
-            {
-              title: 'Status',
-              dataIndex: 'status',
-              width: 120,
-              render: (s: Sitemap['status']) => <Badge status={STATUS_BADGE[s]} text={s} />,
-            },
-            {
-              title: 'Last Crawled',
-              dataIndex: 'last_crawled_at',
-              width: 140,
-              render: (v: string | null) => relativeTime(v),
-            },
-            {
-              title: 'Actions',
-              width: 180,
-              render: (_, row) => (
-                <Space>
-                  <Tooltip title="Re-crawl Now">
-                    <Button
-                      size="small"
-                      icon={<ReloadOutlined />}
-                      loading={crawlingId === row.id}
-                      onClick={() => recrawl(row)}
-                    />
-                  </Tooltip>
-                  <Tooltip title={row.status === 'paused' ? 'Resume' : 'Pause'}>
-                    <Button
-                      size="small"
-                      icon={row.status === 'paused' ? <PlayCircleOutlined /> : <PauseCircleOutlined />}
-                      onClick={() => toggleStatus(row)}
-                    />
-                  </Tooltip>
-                  <Popconfirm title="Delete this sitemap?" onConfirm={() => deleteSitemap(row.id)}>
-                    <Button size="small" danger icon={<DeleteOutlined />} />
-                  </Popconfirm>
-                </Space>
-              ),
-            },
-          ]}
-        />
-      </Card>
+      {!siteId ? (
+        <Card>
+          <Empty description="Add a domain first — its sitemap is fetched automatically." />
+        </Card>
+      ) : (
+        <>
+          {/* ── Sitemap summary ─────────────────────────────────────────────── */}
+          <Card style={{ marginBottom: 16 }} styles={{ body: { padding: '14px 20px' } }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  <GlobalOutlined /> Sitemap
+                </Text>
+                <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 480 }}>
+                  {meta?.sitemap_url ?? '— not fetched yet —'}
+                </div>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {meta ? `${meta.urls_found} URLs · last fetched ${relativeTime(meta.last_crawled_at)}` : 'Click “Fetch sitemap” to discover URLs'}
+                </Text>
+              </div>
+              <Space wrap>
+                {chip('Total', counts.total, 'blue')}
+                {chip('Rendered', counts.completed, 'green')}
+                {chip('Queued', counts.pending, 'default')}
+                {chip('Failed', counts.failed, 'red')}
+              </Space>
+            </div>
+          </Card>
 
-      {/* ── Add sitemap modal ───────────────────────────────────────────────── */}
-      <Modal
-        title="Add Sitemap"
-        open={addOpen}
-        onCancel={() => setAddOpen(false)}
-        onOk={() => form.submit()}
-        confirmLoading={adding}
-        okText="Add"
-        okButtonProps={{ style: { background: BRAND, borderColor: BRAND } }}
-      >
-        <Form form={form} layout="vertical" onFinish={addSitemap} requiredMark={false}>
-          <Form.Item name="site_id" label="Site" rules={[{ required: true, message: 'Select a site' }]}>
-            <Select
-              placeholder="Select a domain"
-              options={sites.map((s) => ({ value: s.id, label: s.domain }))}
-            />
-          </Form.Item>
-          <Form.Item
-            name="sitemap_url"
-            label="Sitemap URL"
-            rules={[
-              { required: true, message: 'Enter the sitemap URL' },
-              { type: 'url', message: 'Enter a valid URL' },
-            ]}
+          {/* ── URLs table ──────────────────────────────────────────────────── */}
+          <Card
+            title="URLs"
+            extra={
+              <Select
+                allowClear
+                placeholder="All statuses"
+                style={{ width: 160 }}
+                value={statusFilter}
+                onChange={(v) => setStatusFilter(v)}
+                options={[
+                  { value: 'completed', label: 'Rendered' },
+                  { value: 'pending', label: 'Queued' },
+                  { value: 'rendering', label: 'Rendering' },
+                  { value: 'failed', label: 'Failed' },
+                ]}
+              />
+            }
           >
-            <Input placeholder="https://example.com/sitemap.xml" />
-          </Form.Item>
-        </Form>
-      </Modal>
+            <Table<UrlRow>
+              loading={loading}
+              rowKey="id"
+              dataSource={urls}
+              pagination={{
+                current: page,
+                pageSize: limit,
+                total,
+                showSizeChanger: false,
+                onChange: setPage,
+              }}
+              locale={{ emptyText: <Empty description="No URLs yet — fetch the sitemap to populate this." /> }}
+              columns={[
+                {
+                  title: 'URL',
+                  dataIndex: 'url',
+                  ellipsis: true,
+                  render: (u: string) => (
+                    <a href={u} target="_blank" rel="noopener noreferrer">
+                      {u}
+                    </a>
+                  ),
+                },
+                {
+                  title: 'Status',
+                  dataIndex: 'status',
+                  width: 130,
+                  render: (s: UrlStatus, row) => (
+                    <Tooltip title={row.error ?? undefined}>
+                      <Tag color={STATUS_TAG[s].color}>{STATUS_TAG[s].label}</Tag>
+                    </Tooltip>
+                  ),
+                },
+                {
+                  title: 'HTTP',
+                  dataIndex: 'statusCode',
+                  width: 80,
+                  render: (c: number | null) =>
+                    c ? <Tag color={c < 400 ? 'green' : 'red'}>{c}</Tag> : <Text type="secondary">—</Text>,
+                },
+                {
+                  title: 'Render time',
+                  dataIndex: 'renderTimeMs',
+                  width: 120,
+                  render: (t: number | null) => (t != null ? `${t} ms` : <Text type="secondary">—</Text>),
+                },
+              ]}
+            />
+          </Card>
+        </>
+      )}
     </div>
   )
 }

@@ -24,6 +24,8 @@ import {
   PlayCircleOutlined,
   RedoOutlined,
   DeleteOutlined,
+  ClearOutlined,
+  ExportOutlined,
 } from '@ant-design/icons'
 
 const BRAND = '#2da01d'
@@ -151,18 +153,31 @@ export default function CachingQueuePage() {
     }
   }
 
+  // Drain the queue: keep processing batches until nothing is left (or a cap).
   async function processQueue() {
     setProcessing(true)
+    const hide = message.loading('Processing queue…', 0)
     try {
-      const res = await fetch('/api/queue/process', { method: 'POST' })
-      const data = await res.json()
-      if (!res.ok) {
-        message.error(data.error ?? 'Processing failed')
-        return
+      let processed = 0
+      let failed = 0
+      for (let i = 0; i < 40; i++) {
+        const res = await fetch('/api/queue/process', { method: 'POST' })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          message.error(data.error ?? 'Processing failed')
+          break
+        }
+        const data = await res.json()
+        processed += data.processed ?? 0
+        failed += data.failed ?? 0
+        await load()
+        if (!data.processed && !data.failed) break
       }
-      message.success(`Processed ${data.processed}, Failed ${data.failed}`)
-      await load()
+      hide()
+      if (processed || failed) message.success(`Done — rendered ${processed}, failed ${failed}`)
+      else message.info('Nothing pending to process')
     } finally {
+      hide()
       setProcessing(false)
     }
   }
@@ -177,6 +192,30 @@ export default function CachingQueuePage() {
     await fetch(`/api/queue?id=${id}`, { method: 'DELETE' })
     message.success('Removed')
     await load()
+  }
+
+  async function retryFailed() {
+    const params = new URLSearchParams({ status: 'failed' })
+    if (siteId) params.set('site_id', siteId)
+    const res = await fetch(`/api/queue?${params}`, { method: 'PATCH' })
+    if (res.ok) {
+      message.success('All failed URLs reset to pending')
+      await load()
+    } else {
+      message.error('Retry failed')
+    }
+  }
+
+  async function clearCompleted() {
+    const params = new URLSearchParams({ status: 'completed' })
+    if (siteId) params.set('site_id', siteId)
+    const res = await fetch(`/api/queue?${params}`, { method: 'DELETE' })
+    if (res.ok) {
+      message.success('Cleared completed URLs')
+      await load()
+    } else {
+      message.error('Clear failed')
+    }
   }
 
   return (
@@ -225,6 +264,18 @@ export default function CachingQueuePage() {
               { value: 'failed', label: 'Failed' },
             ]}
           />
+          {summary.failed > 0 && (
+            <Tooltip title="Reset all failed URLs to pending">
+              <Button icon={<RedoOutlined />} onClick={retryFailed}>
+                Retry failed ({summary.failed})
+              </Button>
+            </Tooltip>
+          )}
+          {summary.completed > 0 && (
+            <Popconfirm title="Clear all completed URLs from the queue?" onConfirm={clearCompleted} okText="Clear">
+              <Button icon={<ClearOutlined />}>Clear completed</Button>
+            </Popconfirm>
+          )}
           <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
             Add URLs
           </Button>
@@ -233,9 +284,10 @@ export default function CachingQueuePage() {
             icon={<PlayCircleOutlined />}
             loading={processing}
             onClick={processQueue}
+            disabled={summary.pending === 0}
             style={{ background: BRAND, borderColor: BRAND }}
           >
-            Process Queue
+            Process Queue{summary.pending ? ` (${summary.pending})` : ''}
           </Button>
         </Space>
       </div>
@@ -278,7 +330,16 @@ export default function CachingQueuePage() {
             onChange: setPage,
           }}
           columns={[
-            { title: 'URL', dataIndex: 'url', ellipsis: true },
+            {
+              title: 'URL',
+              dataIndex: 'url',
+              ellipsis: true,
+              render: (u: string) => (
+                <a href={u} target="_blank" rel="noopener noreferrer">
+                  {u}
+                </a>
+              ),
+            },
             { title: 'Priority', dataIndex: 'priority', width: 100 },
             {
               title: 'Status',
@@ -302,9 +363,16 @@ export default function CachingQueuePage() {
             },
             {
               title: 'Actions',
-              width: 120,
+              width: 150,
               render: (_, row) => (
                 <Space>
+                  <Tooltip title="Open URL in new tab">
+                    <Button
+                      size="small"
+                      icon={<ExportOutlined />}
+                      onClick={() => window.open(row.url, '_blank', 'noopener')}
+                    />
+                  </Tooltip>
                   <Tooltip title="Retry">
                     <Button size="small" icon={<RedoOutlined />} onClick={() => retry(row.id)} />
                   </Tooltip>

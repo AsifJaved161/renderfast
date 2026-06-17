@@ -10,6 +10,8 @@ const INJECT_API_PREFIXES = [
   '/api/sitemaps',
   '/api/queue',
   '/api/broken-links',
+  '/api/cache',
+  '/api/seo',
 ]
 
 function isInjectableApi(pathname: string): boolean {
@@ -92,5 +94,8 @@ export const config = {
     '/api/sitemaps/:path*',
     '/api/queue/:path*',
     '/api/broken-links/:path*',
+    '/api/cache/:path*',
+    '/api/cache',
+    '/api/seo',
   ],
 }

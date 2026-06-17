@@ -57,6 +57,7 @@ export default function CachePage() {
   const [selected, setSelected] = useState<React.Key[]>([])
   const [busy, setBusy] = useState(false)
   const [viewHtml, setViewHtml] = useState<{ url: string; html: string } | null>(null)
+  const [summary, setSummary] = useState({ total: 0, totalSizeBytes: 0, avgTtlHours: 0, hitRate: 0 })
   const LIMIT = 20
 
   useEffect(() => {
@@ -71,10 +72,16 @@ export default function CachePage() {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) })
       if (siteId) params.set('site_id', siteId)
-      const res = await fetch(`/api/cache?${params}`)
-      const json = await res.json()
-      setRows(json.data ?? [])
-      setTotal(json.total ?? 0)
+      const sumParams = new URLSearchParams({ summary: 'true' })
+      if (siteId) sumParams.set('site_id', siteId)
+
+      const [list, sum] = await Promise.all([
+        fetch(`/api/cache?${params}`).then((r) => r.json()),
+        fetch(`/api/cache?${sumParams}`).then((r) => r.json()),
+      ])
+      setRows(list.data ?? [])
+      setTotal(list.total ?? 0)
+      if (sum.summary) setSummary(sum.summary)
     } catch {
       message.error('Failed to load cache')
     } finally {
@@ -86,18 +93,10 @@ export default function CachePage() {
     load()
   }, [load])
 
-  // ── Stats (derived from current page rows) ─────────────────────────────────
-  const totalSizeKb = rows.reduce((s, r) => s + (r.html_size_bytes ?? 0), 0) / 1024
-  const hitRate = 0 // computed server-side in analytics; placeholder for this page
-  const avgTtl =
-    rows.length > 0
-      ? rows.reduce((s, r) => {
-          if (!r.expires_at) return s
-          return s + (new Date(r.expires_at).getTime() - new Date(r.cached_at).getTime())
-        }, 0) /
-        rows.length /
-        3600_000
-      : 0
+  // ── Real aggregate stats (whole cache, not just this page) ─────────────────
+  const totalSizeKb = summary.totalSizeBytes / 1024
+  const hitRate = summary.hitRate
+  const avgTtl = summary.avgTtlHours
 
   async function refreshOne(url: string) {
     setBusy(true)
@@ -234,7 +233,11 @@ export default function CachePage() {
         </Col>
         <Col xs={12} lg={6}>
           <Card>
-            <Statistic title="Total Size (page)" value={totalSizeKb} precision={1} suffix="KB" prefix={<HddOutlined style={{ color: BRAND }} />} />
+            {totalSizeKb >= 1024 ? (
+              <Statistic title="Total Size" value={totalSizeKb / 1024} precision={2} suffix="MB" prefix={<HddOutlined style={{ color: BRAND }} />} />
+            ) : (
+              <Statistic title="Total Size" value={totalSizeKb} precision={1} suffix="KB" prefix={<HddOutlined style={{ color: BRAND }} />} />
+            )}
           </Card>
         </Col>
         <Col xs={12} lg={6}>
@@ -284,7 +287,9 @@ export default function CachePage() {
               ellipsis: true,
               render: (url: string) => (
                 <Tooltip title={url}>
-                  <span>{url}</span>
+                  <a href={url} target="_blank" rel="noopener noreferrer">
+                    {url}
+                  </a>
                 </Tooltip>
               ),
             },

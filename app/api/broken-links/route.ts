@@ -6,8 +6,38 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+const UA = 'RenderFastBot/1.0 (+https://renderfast.vercel.app)'
+const MAX_CHECK = 150 // URLs per scan (keeps within the function timeout)
+const CONCURRENCY = 12
+
 function userId(req: NextRequest) {
   return req.headers.get('x-user-id')
+}
+
+// Resolve a URL's live HTTP status. HEAD first; fall back to GET for servers
+// that block HEAD. Returns 0 on a network/DNS error.
+async function checkStatus(url: string): Promise<number> {
+  const cfg = {
+    timeout: 12000,
+    validateStatus: () => true as const,
+    maxRedirects: 3,
+    headers: { 'User-Agent': UA },
+  }
+  try {
+    const head = await axios.head(url, cfg)
+    if ([403, 405, 501].includes(head.status)) {
+      const get = await axios.get(url, { ...cfg, responseType: 'text', maxContentLength: 2 * 1024 * 1024 })
+      return get.status
+    }
+    return head.status
+  } catch {
+    try {
+      const get = await axios.get(url, { ...cfg, responseType: 'text', maxContentLength: 2 * 1024 * 1024 })
+      return get.status
+    } catch {
+      return 0
+    }
+  }
 }
 
 // ── GET /api/broken-links?site_id= — list for the user's sites ───────────────
@@ -54,42 +84,65 @@ export async function POST(req: NextRequest) {
     .single()
   if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 })
 
-  const { data: entries } = await supabaseAdmin
-    .from('cache_entries')
-    .select('url')
-    .eq('site_id', site_id)
+  // Source URLs = sitemap URLs (caching_queue) ∪ already-rendered (cache_entries).
+  const [{ data: queued }, { data: entries }] = await Promise.all([
+    supabaseAdmin.from('caching_queue').select('url').eq('site_id', site_id).limit(2000),
+    supabaseAdmin.from('cache_entries').select('url').eq('site_id', site_id).limit(2000),
+  ])
+  const urlSet = new Set<string>()
+  ;(queued ?? []).forEach((r) => urlSet.add(r.url))
+  ;(entries ?? []).forEach((r) => urlSet.add(r.url))
+  const urls = Array.from(urlSet).slice(0, MAX_CHECK)
 
-  const urls = (entries ?? []).map((e) => e.url)
-  const broken: { url: string; status_code: number }[] = []
-
-  await Promise.all(
-    urls.map(async (url) => {
-      try {
-        const res = await axios.head(url, {
-          timeout: 10000,
-          validateStatus: () => true,
-          headers: { 'User-Agent': 'RenderFastBot/1.0' },
-        })
-        if (res.status >= 400) broken.push({ url, status_code: res.status })
-      } catch {
-        broken.push({ url, status_code: 0 })
-      }
+  if (urls.length === 0) {
+    return NextResponse.json({
+      scanned: 0,
+      broken: 0,
+      links: [],
+      message: 'No URLs to check yet — fetch the sitemap for this site first.',
     })
-  )
-
-  if (broken.length > 0) {
-    await supabaseAdmin.from('broken_links').insert(
-      broken.map((b) => ({
-        site_id,
-        url: b.url,
-        status_code: b.status_code,
-        detected_at: new Date().toISOString(),
-        resolved: false,
-      }))
-    )
   }
 
-  return NextResponse.json({ scanned: urls.length, broken: broken.length, links: broken })
+  // Check in small concurrent batches to stay within the timeout.
+  const broken: { url: string; status_code: number }[] = []
+  for (let i = 0; i < urls.length; i += CONCURRENCY) {
+    const batch = urls.slice(i, i + CONCURRENCY)
+    const results = await Promise.all(
+      batch.map(async (url) => ({ url, code: await checkStatus(url) }))
+    )
+    for (const r of results) {
+      if (r.code === 0 || r.code >= 400) broken.push({ url: r.url, status_code: r.code })
+    }
+  }
+
+  // Don't duplicate URLs already flagged & still open.
+  const { data: openRows } = await supabaseAdmin
+    .from('broken_links')
+    .select('url')
+    .eq('site_id', site_id)
+    .eq('resolved', false)
+  const have = new Set((openRows ?? []).map((r) => r.url))
+
+  const toInsert = broken
+    .filter((b) => !have.has(b.url))
+    .map((b) => ({
+      site_id,
+      url: b.url,
+      status_code: b.status_code,
+      detected_at: new Date().toISOString(),
+      resolved: false,
+    }))
+
+  if (toInsert.length > 0) {
+    await supabaseAdmin.from('broken_links').insert(toInsert)
+  }
+
+  return NextResponse.json({
+    scanned: urls.length,
+    broken: broken.length,
+    newlyFound: toInsert.length,
+    links: broken,
+  })
 }
 
 // ── PATCH /api/broken-links?id= — mark resolved ──────────────────────────────

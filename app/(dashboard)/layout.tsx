@@ -93,35 +93,35 @@ const NAV: NavGroup[] = [
   {
     title: 'ANALYTICS',
     items: [
+      { key: '/domain-manager', label: 'Domain Manager', icon: <GlobalOutlined /> },
       { key: '/dashboard', label: 'Dashboard', icon: <HomeOutlined /> },
-      { key: '/dashboard/cdn-analytics', label: 'CDN Analytics', icon: <BarChartOutlined /> },
-      { key: '/dashboard/insight', label: 'SEO Insights', icon: <BulbOutlined /> },
-      { key: '/dashboard/render-history', label: 'Render History', icon: <HistoryOutlined /> },
+      { key: '/cdn-analytics', label: 'CDN Analytics', icon: <BarChartOutlined /> },
+      { key: '/insight', label: 'SEO Insights', icon: <BulbOutlined /> },
+      { key: '/render-history', label: 'Render History', icon: <HistoryOutlined /> },
     ],
   },
   {
     title: 'CACHE',
     items: [
-      { key: '/dashboard/cache', label: 'Cache Manager', icon: <DatabaseOutlined /> },
-      { key: '/dashboard/caching-queue', label: 'Caching Queue', icon: <ThunderboltOutlined /> },
-      { key: '/dashboard/sitemaps', label: 'Sitemaps', icon: <ApartmentOutlined /> },
+      { key: '/cache', label: 'Cache Manager', icon: <DatabaseOutlined /> },
+      { key: '/caching-queue', label: 'Caching Queue', icon: <ThunderboltOutlined /> },
+      { key: '/sitemaps', label: 'Sitemaps', icon: <ApartmentOutlined /> },
     ],
   },
   {
     title: 'SITE HEALTH',
     items: [
-      { key: '/dashboard/domain-manager', label: 'Domain Manager', icon: <GlobalOutlined /> },
-      { key: '/dashboard/404-checker', label: '404 Checker', icon: <WarningOutlined /> },
-      { key: '/dashboard/gsc', label: 'GSC', icon: <LineChartOutlined /> },
+      { key: '/404-checker', label: '404 Checker', icon: <WarningOutlined /> },
+      { key: '/gsc', label: 'GSC', icon: <LineChartOutlined /> },
     ],
   },
   {
     title: 'ACCOUNT',
     items: [
-      { key: '/dashboard/billing', label: 'Billing', icon: <CreditCardOutlined /> },
-      { key: '/dashboard/security', label: 'Security', icon: <LockOutlined /> },
-      { key: '/dashboard/settings', label: 'Settings', icon: <SettingOutlined /> },
-      { key: '/dashboard/integration-wizard', label: 'Integration Guide', icon: <RocketOutlined /> },
+      { key: '/billing', label: 'Billing', icon: <CreditCardOutlined /> },
+      { key: '/security', label: 'Security', icon: <LockOutlined /> },
+      { key: '/settings', label: 'Settings', icon: <SettingOutlined /> },
+      { key: '/integration-wizard', label: 'Integration Guide', icon: <RocketOutlined /> },
     ],
   },
 ]

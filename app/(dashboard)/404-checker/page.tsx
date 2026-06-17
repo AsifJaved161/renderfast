@@ -13,10 +13,11 @@ import {
   Tag,
   Badge,
   Space,
+  Tooltip,
   Typography,
   message,
 } from 'antd'
-import { ScanOutlined, LinkOutlined } from '@ant-design/icons'
+import { ScanOutlined, LinkOutlined, ExportOutlined } from '@ant-design/icons'
 
 const BRAND = '#2da01d'
 const { Title } = Typography
@@ -82,7 +83,11 @@ export default function BrokenLinkCheckerPage() {
         message.error(data.error ?? 'Scan failed')
         return
       }
-      message.success(`Scanned ${data.scanned} URLs — ${data.broken} broken`)
+      if (data.message) {
+        message.warning(data.message)
+      } else {
+        message.success(`Scanned ${data.scanned} URLs — ${data.broken} broken (${data.newlyFound ?? 0} new)`)
+      }
       await load()
     } finally {
       setScanning(false)
@@ -227,15 +232,23 @@ export default function BrokenLinkCheckerPage() {
             },
             {
               title: 'Actions',
-              width: 150,
-              render: (_, row) =>
-                row.resolved ? (
-                  '—'
-                ) : (
-                  <Button size="small" onClick={() => markResolved(row.id)}>
-                    Mark Resolved
-                  </Button>
-                ),
+              width: 180,
+              render: (_, row) => (
+                <Space>
+                  <Tooltip title="Open URL in new tab">
+                    <Button
+                      size="small"
+                      icon={<ExportOutlined />}
+                      onClick={() => window.open(row.url, '_blank', 'noopener')}
+                    />
+                  </Tooltip>
+                  {!row.resolved && (
+                    <Button size="small" onClick={() => markResolved(row.id)}>
+                      Mark Resolved
+                    </Button>
+                  )}
+                </Space>
+              ),
             },
           ]}
         />

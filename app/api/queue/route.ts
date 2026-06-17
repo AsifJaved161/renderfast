@@ -87,48 +87,83 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ── PATCH /api/queue?id= — retry (reset to pending) ──────────────────────────
+// ── PATCH /api/queue — retry: ?id= (one) OR ?status= (bulk → pending) ─────────
 export async function PATCH(req: NextRequest) {
   try {
     const uid = userId(req)
     if (!uid) return NextResponse.json({ error: 'x-user-id required' }, { status: 401 })
 
-    const id = req.nextUrl.searchParams.get('id')
-    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    const { searchParams } = req.nextUrl
+    const id = searchParams.get('id')
+    const status = searchParams.get('status')
+    const siteId = searchParams.get('site_id')
+    const reset = { status: 'pending' as const, error_message: null, completed_at: null }
 
-    const { data, error } = await supabaseAdmin
-      .from('caching_queue')
-      .update({ status: 'pending', error_message: null, completed_at: null })
-      .eq('id', id)
-      .eq('user_id', uid)
-      .select()
-      .single()
+    if (id) {
+      const { data, error } = await supabaseAdmin
+        .from('caching_queue')
+        .update(reset)
+        .eq('id', id)
+        .eq('user_id', uid)
+        .select()
+        .single()
+      if (error || !data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+      return NextResponse.json({ data })
+    }
 
-    if (error || !data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-    return NextResponse.json({ data })
+    // Bulk reset (e.g. retry all failed).
+    if (status) {
+      if (!['failed', 'rendering', 'completed'].includes(status)) {
+        return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
+      }
+      let q = supabaseAdmin.from('caching_queue').update(reset).eq('user_id', uid).eq('status', status)
+      if (siteId) q = q.eq('site_id', siteId)
+      const { error } = await q
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ success: true })
+    }
+
+    return NextResponse.json({ error: 'id or status required' }, { status: 400 })
   } catch (error) {
     console.error('[QUEUE_PATCH]:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
-// ── DELETE /api/queue?id= ────────────────────────────────────────────────────
+// ── DELETE /api/queue — ?id= (one) OR ?status= (bulk clear) ───────────────────
 export async function DELETE(req: NextRequest) {
   try {
     const uid = userId(req)
     if (!uid) return NextResponse.json({ error: 'x-user-id required' }, { status: 401 })
 
-    const id = req.nextUrl.searchParams.get('id')
-    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    const { searchParams } = req.nextUrl
+    const id = searchParams.get('id')
+    const status = searchParams.get('status')
+    const siteId = searchParams.get('site_id')
 
-    const { error } = await supabaseAdmin
-      .from('caching_queue')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', uid)
+    if (id) {
+      const { error } = await supabaseAdmin
+        .from('caching_queue')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', uid)
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ success: true })
+    }
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ success: true })
+    // Bulk delete by status (e.g. clear completed).
+    if (status) {
+      if (!['pending', 'rendering', 'completed', 'failed'].includes(status)) {
+        return NextResponse.json({ error: 'Invalid status' }, { status: 400 })
+      }
+      let q = supabaseAdmin.from('caching_queue').delete().eq('user_id', uid).eq('status', status)
+      if (siteId) q = q.eq('site_id', siteId)
+      const { error } = await q
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json({ success: true })
+    }
+
+    return NextResponse.json({ error: 'id or status required' }, { status: 400 })
   } catch (error) {
     console.error('[QUEUE_DELETE]:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

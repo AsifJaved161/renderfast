@@ -11,6 +11,8 @@ import {
   Badge,
   Modal,
   Space,
+  Tooltip,
+  Empty,
   Typography,
   Descriptions,
   message,
@@ -210,6 +212,11 @@ export default function RenderHistoryPage() {
           rowKey={(r) => r.timestamp + r.url}
           dataSource={filtered}
           pagination={{ pageSize: 20, showSizeChanger: false }}
+          locale={{
+            emptyText: (
+              <Empty description="No renders yet — once crawlers hit your integrated domains, each render is logged here." />
+            ),
+          }}
           expandable={{
             expandedRowRender: (r) => (
               <div style={{ padding: 8 }}>
@@ -237,9 +244,20 @@ export default function RenderHistoryPage() {
               title: 'Timestamp',
               dataIndex: 'timestamp',
               width: 130,
-              render: (v: string) => relativeTime(v),
+              render: (v: string) => (
+                <Tooltip title={new Date(v).toLocaleString()}>{relativeTime(v)}</Tooltip>
+              ),
             },
-            { title: 'URL', dataIndex: 'url', ellipsis: true },
+            {
+              title: 'URL',
+              dataIndex: 'url',
+              ellipsis: true,
+              render: (u: string) => (
+                <a href={u} target="_blank" rel="noopener noreferrer">
+                  {u}
+                </a>
+              ),
+            },
             { title: 'Bot Name', dataIndex: 'botName', width: 140, render: (v) => v ?? '—' },
             {
               title: 'Bot Type',

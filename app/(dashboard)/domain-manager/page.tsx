@@ -89,8 +89,16 @@ export default function DomainManagerPage() {
       setAddOpen(false)
       form.resetFields()
       await load()
-      // Jump straight into the new site's details.
-      if (data.site?.id) router.push(`/domain-manager/${data.site.id}`)
+      // Auto-discover the sitemap and queue its URLs (runs server-side).
+      if (data.site?.id) {
+        fetch('/api/sitemaps/auto', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ site_id: data.site.id }),
+        }).catch(() => {})
+        message.info('Fetching sitemap — URLs will appear in the Sitemaps section.')
+        router.push(`/domain-manager/${data.site.id}`)
+      }
     } finally {
       setAdding(false)
     }
