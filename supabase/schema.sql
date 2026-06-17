@@ -21,6 +21,12 @@ create table if not exists public.users (
   stripe_subscription_id text,
   notification_email     boolean not null default true,
   monthly_reset_at       timestamptz not null default now(),
+  is_admin               boolean not null default false,
+  is_banned              boolean not null default false,
+  ban_reason             text,
+  banned_at              timestamptz,
+  last_login_at          timestamptz,
+  notes                  text,
   created_at             timestamptz not null default now(),
   updated_at             timestamptz not null default now()
 );
@@ -183,9 +189,41 @@ create table if not exists public.gsc_connections (
 );
 
 -- ══════════════════════════════════════════════════════════════════════════════
+-- 12. PLANS + ADMIN_LOGS — admin dashboard
+-- ══════════════════════════════════════════════════════════════════════════════
+create table if not exists public.plans (
+  id             uuid primary key default uuid_generate_v4(),
+  name           text not null,
+  slug           text not null unique,
+  price_monthly  numeric(10,2) not null default 0,
+  render_limit   integer not null default 1000,
+  site_limit     integer not null default 1,
+  cache_size_gb  numeric(10,2) not null default 0,
+  features       jsonb,
+  stripe_price_id text,
+  sort_order     integer not null default 0,
+  is_active      boolean not null default true,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+
+create table if not exists public.admin_logs (
+  id          uuid primary key default uuid_generate_v4(),
+  admin_id    uuid not null references public.users(id) on delete cascade,
+  action      text not null,
+  target_type text,
+  target_id   text,
+  details     jsonb,
+  ip_address  text,
+  created_at  timestamptz not null default now()
+);
+
+-- ══════════════════════════════════════════════════════════════════════════════
 -- INDEXES
 -- ══════════════════════════════════════════════════════════════════════════════
 create index if not exists idx_renders_site_created    on public.renders(site_id, created_at desc);
+create index if not exists idx_admin_logs_created      on public.admin_logs(created_at desc);
+create index if not exists idx_admin_logs_admin        on public.admin_logs(admin_id);
 create index if not exists idx_cache_entries_url_hash  on public.cache_entries(url_hash);
 create index if not exists idx_bot_visits_site_created on public.bot_visits(site_id, created_at desc);
 create index if not exists idx_sites_user_id           on public.sites(user_id);
@@ -213,6 +251,8 @@ alter table public.broken_links  enable row level security;
 alter table public.render_diagnostics enable row level security;
 alter table public.diagnostics_jobs enable row level security;
 alter table public.gsc_connections enable row level security;
+alter table public.plans enable row level security;
+alter table public.admin_logs enable row level security;
 
 -- users: own row
 create policy "users_own_row" on public.users
@@ -265,6 +305,12 @@ create policy "diagnostics_jobs_via_site" on public.diagnostics_jobs
 -- gsc_connections: own row
 create policy "gsc_connections_own" on public.gsc_connections
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- plans / admin_logs: admin-only (service role bypasses for the admin APIs)
+create policy "plans_admin_all" on public.plans
+  for all using (exists (select 1 from public.users u where u.id = auth.uid() and u.is_admin));
+create policy "admin_logs_admin_all" on public.admin_logs
+  for all using (exists (select 1 from public.users u where u.id = auth.uid() and u.is_admin));
 
 -- ══════════════════════════════════════════════════════════════════════════════
 -- TRIGGER — auto-insert public.users row on auth signup

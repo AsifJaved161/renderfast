@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@/lib/supabase'
+import { createServerClient, supabaseAdmin } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -33,6 +33,18 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 401 })
+    }
+
+    // Stamp last_login_at (best-effort — never blocks login).
+    if (data.user) {
+      try {
+        await supabaseAdmin
+          .from('users')
+          .update({ last_login_at: new Date().toISOString() })
+          .eq('id', data.user.id)
+      } catch {
+        /* ignore */
+      }
     }
 
     // Session cookies are set automatically by the @supabase/ssr client.
