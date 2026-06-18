@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { isRenderConfigured } from '@/lib/renderer'
 import { processDiagnosticsJob, isUrlOnDomain, reclaimIfStale } from '@/lib/diagnostics-worker'
+import { getOpsConfig } from '@/lib/app-config'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -10,7 +11,6 @@ export const maxDuration = 60
 // How many recent rows to pull (covers ~the latest run of each URL on a site).
 const SCAN_LIMIT = 400
 // Re-scan caps.
-const MAX_RESCAN_URLS = 15 // max URLs analysed per job
 const RESCAN_COOLDOWN_MS = 10 * 60 * 1000 // 1 scan per site / 10 min
 const MAX_ACTIVE_JOBS_PER_USER = 3 // cap concurrent/pending jobs across all sites
 
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ siteId: st
 
     // 0) Rendering must be configured — otherwise renderPage() returns a stub,
     //    which would burn render quota and store misleading diagnostics.
-    if (!isRenderConfigured()) {
+    if (!(await isRenderConfigured())) {
       return NextResponse.json(
         { error: 'Rendering isn’t configured yet. Connect Cloudflare to enable diagnostics scans (see CLOUDFLARE_SETUP.md).' },
         { status: 503 }
@@ -236,13 +236,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ siteId: st
     }
 
     // 6) Build the URL list (our own DB rows) and SSRF-filter to the site domain.
+    //    The per-scan cap is admin-configurable (Platform Settings → render queue).
+    const { maxRescanUrls } = await getOpsConfig()
     let urls: string[] = []
     const { data: cached } = await supabaseAdmin
       .from('cache_entries')
       .select('url')
       .eq('site_id', siteId)
       .order('cached_at', { ascending: false })
-      .limit(MAX_RESCAN_URLS * 2)
+      .limit(maxRescanUrls * 2)
     urls = (cached ?? []).map((r: { url: string }) => r.url)
 
     if (urls.length === 0) {
@@ -250,11 +252,11 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ siteId: st
         .from('caching_queue')
         .select('url')
         .eq('site_id', siteId)
-        .limit(MAX_RESCAN_URLS * 2)
+        .limit(maxRescanUrls * 2)
       urls = (queued ?? []).map((r: { url: string }) => r.url)
     }
 
-    urls = Array.from(new Set(urls.filter((u) => isUrlOnDomain(u, site.domain)))).slice(0, MAX_RESCAN_URLS)
+    urls = Array.from(new Set(urls.filter((u) => isUrlOnDomain(u, site.domain)))).slice(0, maxRescanUrls)
 
     if (urls.length === 0) {
       return NextResponse.json({

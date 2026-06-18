@@ -1,12 +1,6 @@
 // Cloudflare Browser Rendering API — no local browser process, no RAM pool.
 import TurndownService from 'turndown'
-
-const ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID!
-const API_TOKEN = process.env.CLOUDFLARE_API_TOKEN!
-// Override-able; defaults to the official content endpoint.
-const CONTENT_URL =
-  process.env.CLOUDFLARE_BROWSER_RENDERING_URL ||
-  `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT_ID}/browser-rendering/content`
+import { getCloudflareConfig } from '@/lib/app-config'
 
 export interface RenderResult {
   html: string
@@ -17,43 +11,52 @@ export interface RenderResult {
 
 // Cloudflare is "configured" when we have a token AND either an account id
 // (to build the default endpoint) or an explicit endpoint override.
-const CF_CONFIGURED =
-  !!API_TOKEN && (!!ACCOUNT_ID || !!process.env.CLOUDFLARE_BROWSER_RENDERING_URL)
+function configured(cf: { apiToken: string; accountId: string; browserRenderingUrl: string }): boolean {
+  return !!cf.apiToken && (!!cf.accountId || !!cf.browserRenderingUrl)
+}
 
 // True once real rendering is set up. Used to avoid billing quota / storing
 // misleading diagnostics for stub renders when Cloudflare isn't configured yet.
-export function isRenderConfigured(): boolean {
-  return CF_CONFIGURED
+export async function isRenderConfigured(): Promise<boolean> {
+  return configured(await getCloudflareConfig())
 }
 
 export async function renderPage(url: string, isMobile = false): Promise<RenderResult> {
+  const cf = await getCloudflareConfig()
+
   // ── Dev fallback (Cloudflare not configured) ─────────────────────────────────
-  // Only used when CLOUDFLARE_* env vars are absent, so local/dev work doesn't 500.
+  // Only used when Cloudflare creds are absent, so local/dev work doesn't 500.
   // In production with Cloudflare configured this branch never runs.
-  if (!CF_CONFIGURED) {
+  if (!configured(cf)) {
     const stubHtml = `<!DOCTYPE html>
 <html>
 <head><title>RenderFast (not configured) - ${url}</title><base href="${url}"></head>
 <body>
   <h1>RenderFast — rendering not configured</h1>
   <p>URL: ${url}</p>
-  <p>Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN to enable real rendering.</p>
+  <p>Set the Cloudflare account ID and API token to enable real rendering.</p>
 </body>
 </html>`
     return { html: stubHtml, renderTimeMs: 50, statusCode: 200 }
   }
 
+  const contentUrl =
+    cf.browserRenderingUrl ||
+    `https://api.cloudflare.com/client/v4/accounts/${cf.accountId}/browser-rendering/content`
+
   const start = Date.now()
   try {
-    const res = await fetch(CONTENT_URL, {
+    const res = await fetch(contentUrl, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${API_TOKEN}`,
+        Authorization: `Bearer ${cf.apiToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         url,
-        waitUntil: 'networkidle2',
+        // Cloudflare expects navigation options nested under gotoOptions —
+        // a top-level `waitUntil` is rejected as an unrecognized key.
+        gotoOptions: { waitUntil: 'networkidle0', timeout: 45000 },
         rejectResourceTypes: ['image', 'font', 'media'],
         viewport: isMobile
           ? { width: 390, height: 844, isMobile: true }

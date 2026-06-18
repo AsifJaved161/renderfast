@@ -3,13 +3,14 @@ import { detectBot } from '@/lib/botDetect'
 import { getCachedPage, setCachedPage } from '@/lib/kv'
 import { renderPage, htmlToMarkdown } from '@/lib/renderer'
 import { captureDiagnostics } from '@/lib/diagnostics'
+import { getOpsConfig } from '@/lib/app-config'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-const CACHE_TTL = 86400
+const CACHE_TTL = 86400 // fallback when ops config is unavailable
 const BASE_HEADERS = { 'X-Robots-Tag': 'noindex', 'X-Powered-By': 'RenderFast' }
 
 function dbBotType(t: string | null): 'search' | 'ai' | 'social' | 'unknown' {
@@ -119,8 +120,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(targetUrl, 302)
   }
 
-  await setCachedPage(domain, targetUrl, html, CACHE_TTL)
-  await persistRender(owner, domain, parsed, html, renderTimeMs, statusCode)
+  const { cacheTtlSeconds } = await getOpsConfig()
+  await setCachedPage(domain, targetUrl, html, cacheTtlSeconds)
+  await persistRender(owner, domain, parsed, html, renderTimeMs, statusCode, cacheTtlSeconds)
   logRender(owner, domain, targetUrl, bot, ua, req, wantsMarkdown, false, renderTimeMs, statusCode)
 
   // ── Render Diagnostics (isolated, non-blocking) ──────────────────────────────
@@ -147,7 +149,8 @@ async function persistRender(
   parsed: URL,
   html: string,
   renderTimeMs: number,
-  statusCode: number
+  statusCode: number,
+  ttlSeconds: number = CACHE_TTL
 ) {
   try {
     await supabaseAdmin
@@ -170,7 +173,7 @@ async function persistRender(
         html_size_bytes: Buffer.byteLength(html, 'utf8'),
         render_time_ms: renderTimeMs,
         cached_at: new Date().toISOString(),
-        expires_at: new Date(Date.now() + CACHE_TTL * 1000).toISOString(),
+        expires_at: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
         is_mobile: false,
       },
       { onConflict: 'url_hash' }
@@ -236,12 +239,13 @@ function revalidateIfExpired(domain: string, url: string) {
 
       const { html, error } = await renderPage(url)
       if (!error && html) {
-        await setCachedPage(domain, url, html, CACHE_TTL)
+        const { cacheTtlSeconds } = await getOpsConfig()
+        await setCachedPage(domain, url, html, cacheTtlSeconds)
         await supabaseAdmin
           .from('cache_entries')
           .update({
             cached_at: new Date().toISOString(),
-            expires_at: new Date(Date.now() + CACHE_TTL * 1000).toISOString(),
+            expires_at: new Date(Date.now() + cacheTtlSeconds * 1000).toISOString(),
           })
           .eq('url', url)
       }

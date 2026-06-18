@@ -1,9 +1,9 @@
 import axios from 'axios'
 import { parseStringPromise } from 'xml2js'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getOpsConfig } from '@/lib/app-config'
 
 // Keep batches sane for free-tier DBs / function timeouts.
-const MAX_URLS = 500
 const MAX_CHILD_SITEMAPS = 20
 const UA = 'RenderFastBot/1.0 (+https://renderfast.vercel.app)'
 
@@ -65,6 +65,8 @@ export async function discoverAndQueueSitemap(
   userId: string,
   domain: string
 ): Promise<SitemapResult> {
+  // Admin-configurable cap (Platform Settings → render queue).
+  const { sitemapMaxUrls: MAX_URLS } = await getOpsConfig()
   const candidates = await discoverSitemapUrls(domain)
   const pages = new Set<string>()
   let usedSitemap: string | null = null

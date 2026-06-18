@@ -12,8 +12,7 @@
 import { supabaseAdmin } from '@/lib/supabase'
 import { renderPage } from '@/lib/renderer'
 import { runDiagnostics } from '@/lib/diagnostics'
-
-const CONCURRENCY = 5
+import { getOpsConfig } from '@/lib/app-config'
 
 // A job is considered stale (its worker instance died mid-run) once it has been
 // active this long without finishing. Tune here. Applied inline wherever job
@@ -105,6 +104,7 @@ export async function processDiagnosticsJob(jobId: string): Promise<void> {
     const renderLimit: number = user?.render_limit ?? 0
     let renderCount: number = user?.render_count ?? 0
     const siteRenderBase: number = site.render_count ?? 0
+    const { rescanConcurrency: CONCURRENCY } = await getOpsConfig()
 
     // Only render URLs that pass the SSRF check.
     const urls = (job.urls ?? []).filter((u) => isUrlOnDomain(u, domain))

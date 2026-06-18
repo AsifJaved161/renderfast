@@ -218,6 +218,13 @@ create table if not exists public.admin_logs (
   created_at  timestamptz not null default now()
 );
 
+-- Admin-editable platform settings (overrides env vars).
+create table if not exists public.app_settings (
+  key        text primary key,
+  value      text,
+  updated_at timestamptz not null default now()
+);
+
 -- ══════════════════════════════════════════════════════════════════════════════
 -- INDEXES
 -- ══════════════════════════════════════════════════════════════════════════════
@@ -253,6 +260,7 @@ alter table public.diagnostics_jobs enable row level security;
 alter table public.gsc_connections enable row level security;
 alter table public.plans enable row level security;
 alter table public.admin_logs enable row level security;
+alter table public.app_settings enable row level security;
 
 -- users: own row
 create policy "users_own_row" on public.users
@@ -310,6 +318,8 @@ create policy "gsc_connections_own" on public.gsc_connections
 create policy "plans_admin_all" on public.plans
   for all using (exists (select 1 from public.users u where u.id = auth.uid() and u.is_admin));
 create policy "admin_logs_admin_all" on public.admin_logs
+  for all using (exists (select 1 from public.users u where u.id = auth.uid() and u.is_admin));
+create policy "app_settings_admin_all" on public.app_settings
   for all using (exists (select 1 from public.users u where u.id = auth.uid() and u.is_admin));
 
 -- ══════════════════════════════════════════════════════════════════════════════

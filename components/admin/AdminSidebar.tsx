@@ -12,6 +12,7 @@ import {
   ExportOutlined,
   LogoutOutlined,
   ThunderboltFilled,
+  SettingOutlined,
 } from '@ant-design/icons'
 
 const BRAND = '#2da01d'
@@ -23,6 +24,7 @@ const NAV = [
   { key: '/admin/subscriptions', icon: <CreditCardOutlined />, label: 'Subscriptions' },
   { key: '/admin/renders', icon: <ThunderboltOutlined />, label: 'Renders Monitor' },
   { key: '/admin/logs', icon: <FileTextOutlined />, label: 'Admin Logs' },
+  { key: '/admin/settings', icon: <SettingOutlined />, label: 'Platform Settings' },
 ]
 
 export default function AdminSidebar() {
