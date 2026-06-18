@@ -88,6 +88,12 @@ export default function DomainManagerPage() {
   }, [load])
 
   async function addDomain(values: { domain: string; name: string }) {
+    // Instant duplicate check against already-loaded sites (www-tolerant).
+    const normalized = values.domain.trim().toLowerCase().replace(/^www\./, '')
+    if (sites.some((s) => s.domain.toLowerCase().replace(/^www\./, '') === normalized)) {
+      message.warning(`${values.domain} is already added.`)
+      return
+    }
     setAdding(true)
     try {
       const res = await fetch('/api/sites', {

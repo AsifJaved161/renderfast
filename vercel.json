@@ -5,5 +5,8 @@
     "app/api/render/route.ts": { "maxDuration": 60 },
     "app/api/queue/process/route.ts": { "maxDuration": 60 },
     "app/api/billing/webhook/route.ts": { "maxDuration": 30 }
-  }
+  },
+  "crons": [
+    { "path": "/api/queue/process", "schedule": "* * * * *" }
+  ]
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getPlanLimits } from '@/lib/plan-utils'
 import { discoverAndQueueSitemap } from '@/lib/sitemap'
+import { drainQueue } from '@/lib/queue-drain'
 import type { Plan } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
@@ -130,15 +131,23 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       // 23505 = unique violation (user already added this domain)
-      const status = (error as { code?: string }).code === '23505' ? 409 : 500
-      return NextResponse.json({ error: error.message }, { status })
+      if ((error as { code?: string }).code === '23505') {
+        return NextResponse.json(
+          { error: 'This domain is already added to your account.' },
+          { status: 409 }
+        )
+      }
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Auto-discover the sitemap and queue its page URLs for rendering — runs
-    // server-side after the response, so it can't be cancelled by client navigation.
+    // Auto-discover the sitemap, queue its page URLs, then immediately start
+    // rendering them (bounded) — all server-side after the response, so it can't
+    // be cancelled by client navigation. Large sitemaps keep draining via the
+    // Vercel cron / "Process Queue" button.
     after(async () => {
       try {
         await discoverAndQueueSitemap(data.id, uid, data.domain)
+        await drainQueue({ siteId: data.id, userId: uid, maxUrls: 12, deadlineMs: 35_000 })
       } catch (e) {
         console.error('[SITES_POST auto-sitemap]:', e)
       }

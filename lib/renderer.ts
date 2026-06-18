@@ -56,7 +56,10 @@ export async function renderPage(url: string, isMobile = false): Promise<RenderR
         url,
         // Cloudflare expects navigation options nested under gotoOptions —
         // a top-level `waitUntil` is rejected as an unrecognized key.
-        gotoOptions: { waitUntil: 'networkidle0', timeout: 45000 },
+        // networkidle2 (tolerates ≤2 lingering connections) instead of
+        // networkidle0 — many real pages keep analytics/ads/websocket sockets
+        // open and would otherwise hang until timeout. 30s cap fails fast.
+        gotoOptions: { waitUntil: 'networkidle2', timeout: 30000 },
         rejectResourceTypes: ['image', 'font', 'media'],
         viewport: isMobile
           ? { width: 390, height: 844, isMobile: true }
