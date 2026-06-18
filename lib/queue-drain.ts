@@ -53,6 +53,24 @@ export async function drainQueue(
     for (const item of items) {
       if (Date.now() >= deadline || processed + failed >= maxUrls) break
 
+      // Efficiency: skip URLs that are already freshly cached — a render is the
+      // expensive, rate-limited resource, so never spend one on a still-valid
+      // page. Marks the item done from the existing cache.
+      const { data: fresh } = await supabaseAdmin
+        .from('cache_entries')
+        .select('expires_at')
+        .eq('site_id', item.site_id)
+        .eq('url', item.url)
+        .maybeSingle()
+      if (fresh?.expires_at && new Date(fresh.expires_at) > new Date()) {
+        await supabaseAdmin
+          .from('caching_queue')
+          .update({ status: 'completed', completed_at: new Date().toISOString() })
+          .eq('id', item.id)
+        processed++
+        continue // no render, no throttle
+      }
+
       // Claim the item so parallel drainers don't double-render it.
       await supabaseAdmin.from('caching_queue').update({ status: 'rendering' }).eq('id', item.id)
 
