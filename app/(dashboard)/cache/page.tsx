@@ -26,6 +26,7 @@ import {
   CheckCircleOutlined,
   FieldTimeOutlined,
 } from '@ant-design/icons'
+import { StatTitle } from '@/components/ui/StatTitle'
 
 const BRAND = '#2da01d'
 const { Title, Paragraph } = Typography
@@ -228,26 +229,26 @@ export default function CachePage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
         <Col xs={12} lg={6}>
           <Card>
-            <Statistic title="Total Cached Pages" value={total} prefix={<DatabaseOutlined style={{ color: BRAND }} />} />
+            <Statistic title={<StatTitle hint="Pages stored in cache, ready to serve bots instantly.">Total Cached Pages</StatTitle>} value={total} prefix={<DatabaseOutlined style={{ color: BRAND }} />} />
           </Card>
         </Col>
         <Col xs={12} lg={6}>
           <Card>
             {totalSizeKb >= 1024 ? (
-              <Statistic title="Total Size" value={totalSizeKb / 1024} precision={2} suffix="MB" prefix={<HddOutlined style={{ color: BRAND }} />} />
+              <Statistic title={<StatTitle hint="Total storage used by your cached pages.">Total Size</StatTitle>} value={totalSizeKb / 1024} precision={2} suffix="MB" prefix={<HddOutlined style={{ color: BRAND }} />} />
             ) : (
-              <Statistic title="Total Size" value={totalSizeKb} precision={1} suffix="KB" prefix={<HddOutlined style={{ color: BRAND }} />} />
+              <Statistic title={<StatTitle hint="Total storage used by your cached pages.">Total Size</StatTitle>} value={totalSizeKb} precision={1} suffix="KB" prefix={<HddOutlined style={{ color: BRAND }} />} />
             )}
           </Card>
         </Col>
         <Col xs={12} lg={6}>
           <Card>
-            <Statistic title="Cache Hit Rate" value={hitRate} suffix="%" prefix={<CheckCircleOutlined style={{ color: BRAND }} />} />
+            <Statistic title={<StatTitle hint="Share of bot requests served straight from cache (no render needed).">Cache Hit Rate</StatTitle>} value={hitRate} suffix="%" prefix={<CheckCircleOutlined style={{ color: BRAND }} />} />
           </Card>
         </Col>
         <Col xs={12} lg={6}>
           <Card>
-            <Statistic title="Avg TTL" value={avgTtl} precision={1} suffix="h" prefix={<FieldTimeOutlined style={{ color: BRAND }} />} />
+            <Statistic title={<StatTitle hint="Average time a cached page stays fresh before it is re-rendered.">Avg TTL</StatTitle>} value={avgTtl} precision={1} suffix="h" prefix={<FieldTimeOutlined style={{ color: BRAND }} />} />
           </Card>
         </Col>
       </Row>

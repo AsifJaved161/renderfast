@@ -1,5 +1,7 @@
 'use client'
 
+import { useState, useEffect } from 'react'
+
 /**
  * Lightweight, dependency-free charts (pure SVG/CSS) used by the Dashboard.
  * Kept intentionally small and readable — no external charting library.
@@ -297,6 +299,95 @@ export function LineChart({
         )
       })}
       </svg>
+    </div>
+  )
+}
+
+// ─── GSC-style metric tiles + toggleable multi-line chart ──────────────────────
+function fmtCompact(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M'
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'K'
+  return String(n)
+}
+
+export interface MetricSeries {
+  label: string
+  color: string
+  points: number[]
+}
+
+// Coloured summary tiles (like Google Search Console) that toggle each line on
+// the chart below. Tiles act as the legend + an interactive filter.
+export function MetricTilesChart({
+  series,
+  labels,
+  height = 240,
+}: {
+  series: MetricSeries[]
+  labels: string[]
+  height?: number
+}) {
+  const [active, setActive] = useState<boolean[]>(() => series.map(() => true))
+  // Keep the toggle array in sync if the number of series changes.
+  useEffect(() => {
+    setActive((prev) => series.map((_, i) => prev[i] ?? true))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [series.length])
+
+  const totals = series.map((s) => s.points.reduce((a, b) => a + b, 0))
+  const shown = series.filter((_, i) => active[i])
+  const toggle = (i: number) =>
+    setActive((p) => {
+      const next = p.map((v, j) => (j === i ? !v : v))
+      return next.some(Boolean) ? next : p // keep at least one line visible
+    })
+
+  return (
+    <div>
+      {/* tiles */}
+      <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap', marginBottom: 18, borderRadius: 10, overflow: 'hidden' }}>
+        {series.map((s, i) => {
+          const on = active[i]
+          return (
+            <button
+              key={s.label}
+              type="button"
+              onClick={() => toggle(i)}
+              style={{
+                flex: '1 1 110px',
+                minWidth: 110,
+                textAlign: 'left',
+                padding: '12px 14px',
+                border: 'none',
+                cursor: 'pointer',
+                background: on ? s.color : '#fafafa',
+                color: on ? '#fff' : '#9ca3af',
+                boxShadow: 'inset 0 0 0 1px #f0f0f0',
+                transition: 'background 0.2s, color 0.2s',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 13, fontWeight: 600 }}>
+                <span
+                  style={{
+                    width: 13,
+                    height: 13,
+                    borderRadius: 3,
+                    border: `2px solid ${on ? '#fff' : s.color}`,
+                    background: on ? '#fff' : 'transparent',
+                    display: 'inline-block',
+                    flexShrink: 0,
+                  }}
+                />
+                {s.label}
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 700, marginTop: 6, lineHeight: 1 }}>{fmtCompact(totals[i])}</div>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* chart (only active series) */}
+      <LineChart labels={labels} series={shown} height={height} showLegend={false} fill />
     </div>
   )
 }

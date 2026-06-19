@@ -26,7 +26,7 @@ import {
   InfoCircleOutlined,
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
-import { DonutChart, Legend, BarChart, LineChart } from '@/components/charts/Charts'
+import { DonutChart, Legend, BarChart, MetricTilesChart } from '@/components/charts/Charts'
 
 const BRAND = '#2da01d'
 const { Title, Text } = Typography
@@ -228,7 +228,7 @@ export default function DashboardPage() {
           value={d.summary.avgCacheServeTime > 0 ? d.summary.avgCacheServeTime : '—'}
           suffix={d.summary.avgCacheServeTime > 0 ? 'ms' : undefined}
           icon={<ThunderboltFilled style={{ color: BRAND }} />}
-          tooltip={`How fast bots actually receive your pages from cache — this is your benefit. The one-time background render (~${d.summary.avgRenderTime || 0} ms) happens once and does NOT affect this; that's the whole point of caching.`}
+          tooltip="How fast crawlers receive your fully-rendered pages from cache. Instant serving helps Google & AI bots index your site faster. The one-time background render doesn't affect this."
         />
         <StatCard
           loading={loading}
@@ -246,11 +246,12 @@ export default function DashboardPage() {
             {loading ? (
               <Skeleton active />
             ) : (
-              <LineChart
+              <MetricTilesChart
                 labels={d.botTimeline.map((t) => t.date.length > 5 ? t.date.slice(5) : t.date)}
                 series={[
                   { label: 'Googlebot', color: BRAND, points: d.botTimeline.map((t) => t.googlebot) },
                   { label: 'GPTBot', color: '#722ed1', points: d.botTimeline.map((t) => t.gptbot) },
+                  { label: 'Bingbot', color: '#1677ff', points: d.botTimeline.map((t) => t.bingbot) },
                   { label: 'Others', color: '#faad14', points: d.botTimeline.map((t) => t.others) },
                 ]}
               />

@@ -27,6 +27,7 @@ import {
   ClearOutlined,
   ExportOutlined,
 } from '@ant-design/icons'
+import { StatTitle } from '@/components/ui/StatTitle'
 
 const BRAND = '#2da01d'
 const { Title } = Typography
@@ -296,22 +297,22 @@ export default function CachingQueuePage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
         <Col xs={12} lg={6}>
           <Card>
-            <Statistic title="Pending" value={summary.pending} valueStyle={{ color: '#1677ff' }} />
+            <Statistic title={<StatTitle hint="URLs waiting to be rendered & cached.">Pending</StatTitle>} value={summary.pending} valueStyle={{ color: '#1677ff' }} />
           </Card>
         </Col>
         <Col xs={12} lg={6}>
           <Card>
-            <Statistic title="Rendering" value={summary.rendering} valueStyle={{ color: '#faad14' }} />
+            <Statistic title={<StatTitle hint="URLs being rendered right now.">Rendering</StatTitle>} value={summary.rendering} valueStyle={{ color: '#faad14' }} />
           </Card>
         </Col>
         <Col xs={12} lg={6}>
           <Card>
-            <Statistic title="Completed" value={summary.completed} valueStyle={{ color: BRAND }} />
+            <Statistic title={<StatTitle hint="URLs successfully rendered & cached.">Completed</StatTitle>} value={summary.completed} valueStyle={{ color: BRAND }} />
           </Card>
         </Col>
         <Col xs={12} lg={6}>
           <Card>
-            <Statistic title="Failed" value={summary.failed} valueStyle={{ color: '#ff4d4f' }} />
+            <Statistic title={<StatTitle hint="URLs that couldn’t be rendered — you can retry them.">Failed</StatTitle>} value={summary.failed} valueStyle={{ color: '#ff4d4f' }} />
           </Card>
         </Col>
       </Row>

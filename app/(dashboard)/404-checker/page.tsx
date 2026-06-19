@@ -18,6 +18,7 @@ import {
   message,
 } from 'antd'
 import { ScanOutlined, LinkOutlined, ExportOutlined } from '@ant-design/icons'
+import { StatTitle } from '@/components/ui/StatTitle'
 
 const BRAND = '#2da01d'
 const { Title } = Typography
@@ -156,22 +157,22 @@ export default function BrokenLinkCheckerPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
         <Col xs={12} lg={6}>
           <Card>
-            <Statistic title="Total Broken Links" value={total} valueStyle={{ color: '#ff4d4f' }} />
+            <Statistic title={<StatTitle hint="Dead links found on your site — bad for SEO & users.">Total Broken Links</StatTitle>} value={total} valueStyle={{ color: '#ff4d4f' }} />
           </Card>
         </Col>
         <Col xs={12} lg={6}>
           <Card>
-            <Statistic title="404 Not Found" value={notFound} valueStyle={{ color: '#faad14' }} />
+            <Statistic title={<StatTitle hint="Links pointing to pages that no longer exist (404).">404 Not Found</StatTitle>} value={notFound} valueStyle={{ color: '#faad14' }} />
           </Card>
         </Col>
         <Col xs={12} lg={6}>
           <Card>
-            <Statistic title="5xx Errors" value={serverErrors} valueStyle={{ color: '#ff4d4f' }} />
+            <Statistic title={<StatTitle hint="Links returning server errors (5xx) — your server failed to respond.">5xx Errors</StatTitle>} value={serverErrors} valueStyle={{ color: '#ff4d4f' }} />
           </Card>
         </Col>
         <Col xs={12} lg={6}>
           <Card>
-            <Statistic title="Resolved" value={resolved} valueStyle={{ color: BRAND }} />
+            <Statistic title={<StatTitle hint="Broken links you’ve marked as fixed.">Resolved</StatTitle>} value={resolved} valueStyle={{ color: BRAND }} />
           </Card>
         </Col>
       </Row>

@@ -24,7 +24,7 @@ import {
   InfoCircleOutlined,
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
-import { DonutChart, Legend, BarChart, LineChart } from '@/components/charts/Charts'
+import { DonutChart, Legend, BarChart, MetricTilesChart } from '@/components/charts/Charts'
 
 const BRAND = '#2da01d'
 const { Title } = Typography
@@ -177,7 +177,7 @@ export default function CdnAnalyticsPage() {
         <SummaryCard loading={loading} title="Total Bot Requests" value={data.summary.totalBotRequests} icon={<ThunderboltOutlined style={{ color: BRAND }} />} tooltip="Times search & AI crawlers hit your integrated domains." />
         <SummaryCard loading={loading} title="Unique URLs Crawled" value={data.summary.uniqueUrls} icon={<LinkOutlined style={{ color: BRAND }} />} tooltip="Distinct pages crawled by bots." />
         <SummaryCard loading={loading} title="Cache Hit Rate" value={data.summary.cacheHitRate} suffix="%" icon={<CheckCircleOutlined style={{ color: BRAND }} />} tooltip="Share of bot requests served instantly from cache (no render)." />
-        <SummaryCard loading={loading} title="Cache Response Time" value={data.summary.avgCacheServeTime} suffix="ms" icon={<ThunderboltOutlined style={{ color: BRAND }} />} tooltip="How fast bots receive your pages from cache — your benefit. Background render time is separate." />
+        <SummaryCard loading={loading} title="Cache Response Time" value={data.summary.avgCacheServeTime > 0 ? data.summary.avgCacheServeTime : '—'} suffix={data.summary.avgCacheServeTime > 0 ? 'ms' : undefined} icon={<ThunderboltOutlined style={{ color: BRAND }} />} tooltip="How fast crawlers receive your rendered pages from cache. Instant serving means faster, fuller indexing of your site. Background render time is separate." />
       </Row>
 
       {/* ── Timeline + Donut ────────────────────────────────────────────────── */}
@@ -187,7 +187,7 @@ export default function CdnAnalyticsPage() {
             {loading ? (
               <Skeleton active />
             ) : (
-              <LineChart
+              <MetricTilesChart
                 labels={data.botTimeline.map((t) => t.date.length > 5 ? t.date.slice(5) : t.date)}
                 series={[
                   { label: 'Googlebot', color: BRAND, points: data.botTimeline.map((t) => t.googlebot) },
@@ -309,7 +309,7 @@ function SummaryCard({
 }: {
   loading: boolean
   title: string
-  value: number
+  value: number | string
   suffix?: string
   icon: React.ReactNode
   tooltip?: string
