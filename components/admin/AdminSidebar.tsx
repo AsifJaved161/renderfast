@@ -1,7 +1,7 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
-import { Layout, Menu, Button } from 'antd'
+import { Layout, Menu, Button, Tooltip } from 'antd'
 import {
   BarChartOutlined,
   TeamOutlined,
@@ -18,13 +18,13 @@ import {
 const BRAND = '#2da01d'
 
 const NAV = [
-  { key: '/admin/dashboard', icon: <BarChartOutlined />, label: 'Dashboard' },
-  { key: '/admin/users', icon: <TeamOutlined />, label: 'Users' },
-  { key: '/admin/plans', icon: <TagsOutlined />, label: 'Plans' },
-  { key: '/admin/subscriptions', icon: <CreditCardOutlined />, label: 'Subscriptions' },
-  { key: '/admin/renders', icon: <ThunderboltOutlined />, label: 'Renders Monitor' },
-  { key: '/admin/logs', icon: <FileTextOutlined />, label: 'Admin Logs' },
-  { key: '/admin/settings', icon: <SettingOutlined />, label: 'Platform Settings' },
+  { key: '/admin/dashboard', icon: <BarChartOutlined />, label: 'Dashboard', hint: 'Platform-wide users, revenue & renders' },
+  { key: '/admin/users', icon: <TeamOutlined />, label: 'Users', hint: 'Manage all user accounts' },
+  { key: '/admin/plans', icon: <TagsOutlined />, label: 'Plans', hint: 'Pricing tiers & limits' },
+  { key: '/admin/subscriptions', icon: <CreditCardOutlined />, label: 'Subscriptions', hint: 'Active Stripe subscriptions' },
+  { key: '/admin/renders', icon: <ThunderboltOutlined />, label: 'Renders Monitor', hint: 'Every render across the platform' },
+  { key: '/admin/logs', icon: <FileTextOutlined />, label: 'Admin Logs', hint: 'Audit trail of admin actions' },
+  { key: '/admin/settings', icon: <SettingOutlined />, label: 'Platform Settings', hint: 'Cloudflare config, usage & queue limits' },
 ]
 
 export default function AdminSidebar() {
@@ -54,7 +54,15 @@ export default function AdminSidebar() {
           selectedKeys={[selected]}
           onClick={({ key }) => router.push(key)}
           style={{ background: '#141414', border: 'none', flex: 1 }}
-          items={NAV}
+          items={NAV.map((n) => ({
+            key: n.key,
+            icon: n.icon,
+            label: (
+              <Tooltip title={n.hint} placement="right" mouseEnterDelay={0.3}>
+                <span>{n.label}</span>
+              </Tooltip>
+            ),
+          }))}
         />
 
         <div style={{ padding: 12, borderTop: '1px solid #222' }}>

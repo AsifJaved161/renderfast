@@ -84,6 +84,7 @@ interface NavItem {
   key: string // route path
   label: string
   icon: React.ReactNode
+  hint: string // 1-line tooltip shown on hover
 }
 interface NavGroup {
   title: string
@@ -94,36 +95,36 @@ const NAV: NavGroup[] = [
   {
     title: 'ANALYTICS',
     items: [
-      { key: '/domain-manager', label: 'Domain Manager', icon: <GlobalOutlined /> },
-      { key: '/dashboard', label: 'Dashboard', icon: <HomeOutlined /> },
-      { key: '/cdn-analytics', label: 'CDN Analytics', icon: <BarChartOutlined /> },
-      { key: '/insight', label: 'SEO Insights', icon: <BulbOutlined /> },
-      { key: '/bot-visibility', label: 'Bot Visibility', icon: <EyeOutlined /> },
-      { key: '/render-history', label: 'Render History', icon: <HistoryOutlined /> },
+      { key: '/domain-manager', label: 'Domain Manager', icon: <GlobalOutlined />, hint: 'Add & manage your websites' },
+      { key: '/dashboard', label: 'Dashboard', icon: <HomeOutlined />, hint: 'Overview of bot traffic & cache performance' },
+      { key: '/cdn-analytics', label: 'CDN Analytics', icon: <BarChartOutlined />, hint: 'Detailed crawler traffic & cache stats' },
+      { key: '/insight', label: 'SEO Insights', icon: <BulbOutlined />, hint: 'Search Console clicks, impressions & position' },
+      { key: '/bot-visibility', label: 'Bot Visibility', icon: <EyeOutlined />, hint: 'What AI crawlers actually see on your pages' },
+      { key: '/render-history', label: 'Render History', icon: <HistoryOutlined />, hint: 'Log of every page rendered for bots' },
     ],
   },
   {
     title: 'CACHE',
     items: [
-      { key: '/cache', label: 'Cache Manager', icon: <DatabaseOutlined /> },
-      { key: '/caching-queue', label: 'Caching Queue', icon: <ThunderboltOutlined /> },
-      { key: '/sitemaps', label: 'Sitemaps', icon: <ApartmentOutlined /> },
+      { key: '/cache', label: 'Cache Manager', icon: <DatabaseOutlined />, hint: 'View & clear your cached pages' },
+      { key: '/caching-queue', label: 'Caching Queue', icon: <ThunderboltOutlined />, hint: 'Pages waiting to be pre-rendered' },
+      { key: '/sitemaps', label: 'Sitemaps', icon: <ApartmentOutlined />, hint: 'URLs discovered from your sitemap' },
     ],
   },
   {
     title: 'SITE HEALTH',
     items: [
-      { key: '/404-checker', label: '404 Checker', icon: <WarningOutlined /> },
-      { key: '/gsc', label: 'GSC', icon: <LineChartOutlined /> },
+      { key: '/404-checker', label: '404 Checker', icon: <WarningOutlined />, hint: 'Find broken links on your site' },
+      { key: '/gsc', label: 'GSC', icon: <LineChartOutlined />, hint: 'Connect Google Search Console' },
     ],
   },
   {
     title: 'ACCOUNT',
     items: [
-      { key: '/billing', label: 'Billing', icon: <CreditCardOutlined /> },
-      { key: '/security', label: 'Security', icon: <LockOutlined /> },
-      { key: '/settings', label: 'Settings', icon: <SettingOutlined /> },
-      { key: '/integration-wizard', label: 'Integration Guide', icon: <RocketOutlined /> },
+      { key: '/billing', label: 'Billing', icon: <CreditCardOutlined />, hint: 'Your plan & payment details' },
+      { key: '/security', label: 'Security', icon: <LockOutlined />, hint: 'API keys & access settings' },
+      { key: '/settings', label: 'Settings', icon: <SettingOutlined />, hint: 'Account preferences' },
+      { key: '/integration-wizard', label: 'Integration Guide', icon: <RocketOutlined />, hint: 'Connect RenderFast to your site' },
     ],
   },
 ]
@@ -266,7 +267,11 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
         children: group.items.map((item) => ({
           key: item.key,
           icon: item.icon,
-          label: item.label,
+          label: (
+            <Tooltip title={item.hint} placement="right" mouseEnterDelay={0.3}>
+              <span>{item.label}</span>
+            </Tooltip>
+          ),
         })),
       })),
     []

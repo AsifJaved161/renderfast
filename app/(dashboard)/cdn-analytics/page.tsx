@@ -14,12 +14,14 @@ import {
   Space,
   Skeleton,
   Alert,
+  Tooltip,
 } from 'antd'
 import Link from 'next/link'
 import {
   ThunderboltOutlined,
   LinkOutlined,
   CheckCircleOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import { DonutChart, Legend, BarChart, LineChart } from '@/components/charts/Charts'
@@ -172,10 +174,10 @@ export default function CdnAnalyticsPage() {
 
       {/* ── Summary cards ───────────────────────────────────────────────────── */}
       <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-        <SummaryCard loading={loading} title="Total Bot Requests" value={data.summary.totalBotRequests} icon={<ThunderboltOutlined style={{ color: BRAND }} />} />
-        <SummaryCard loading={loading} title="Unique URLs Crawled" value={data.summary.uniqueUrls} icon={<LinkOutlined style={{ color: BRAND }} />} />
-        <SummaryCard loading={loading} title="Cache Hit Rate" value={data.summary.cacheHitRate} suffix="%" icon={<CheckCircleOutlined style={{ color: BRAND }} />} />
-        <SummaryCard loading={loading} title="Cache Response Time" value={data.summary.avgCacheServeTime} suffix="ms" icon={<ThunderboltOutlined style={{ color: BRAND }} />} />
+        <SummaryCard loading={loading} title="Total Bot Requests" value={data.summary.totalBotRequests} icon={<ThunderboltOutlined style={{ color: BRAND }} />} tooltip="Times search & AI crawlers hit your integrated domains." />
+        <SummaryCard loading={loading} title="Unique URLs Crawled" value={data.summary.uniqueUrls} icon={<LinkOutlined style={{ color: BRAND }} />} tooltip="Distinct pages crawled by bots." />
+        <SummaryCard loading={loading} title="Cache Hit Rate" value={data.summary.cacheHitRate} suffix="%" icon={<CheckCircleOutlined style={{ color: BRAND }} />} tooltip="Share of bot requests served instantly from cache (no render)." />
+        <SummaryCard loading={loading} title="Cache Response Time" value={data.summary.avgCacheServeTime} suffix="ms" icon={<ThunderboltOutlined style={{ color: BRAND }} />} tooltip="How fast bots receive your pages from cache — your benefit. Background render time is separate." />
       </Row>
 
       {/* ── Timeline + Donut ────────────────────────────────────────────────── */}
@@ -303,20 +305,32 @@ function SummaryCard({
   value,
   suffix,
   icon,
+  tooltip,
 }: {
   loading: boolean
   title: string
   value: number
   suffix?: string
   icon: React.ReactNode
+  tooltip?: string
 }) {
+  const titleNode = tooltip ? (
+    <Space size={4}>
+      {title}
+      <Tooltip title={tooltip}>
+        <InfoCircleOutlined style={{ color: '#bfbfbf', fontSize: 12, cursor: 'help' }} />
+      </Tooltip>
+    </Space>
+  ) : (
+    title
+  )
   return (
     <Col xs={12} lg={6}>
       <Card>
         {loading ? (
           <Skeleton active paragraph={false} />
         ) : (
-          <Statistic title={title} value={value} suffix={suffix} prefix={icon} />
+          <Statistic title={titleNode} value={value} suffix={suffix} prefix={icon} />
         )}
       </Card>
     </Col>
