@@ -78,16 +78,23 @@ export async function GET(req: NextRequest) {
   const cacheHitRate = allRenders.length
     ? Math.round((cacheHits / allRenders.length) * 100)
     : 0
+  const avg = (rows: any[]) =>
+    rows.length ? Math.round(rows.reduce((s: number, r: any) => s + r.render_time_ms, 0) / rows.length) : 0
+
   const timed = allRenders.filter((r: any) => r.render_time_ms != null)
-  const avgResponseTime = timed.length
-    ? Math.round(timed.reduce((s: number, r: any) => s + r.render_time_ms, 0) / timed.length)
-    : 0
+  // What the BOT experienced when served from cache (fast — the benefit).
+  const avgCacheServeTime = avg(timed.filter((r: any) => r.cache_hit))
+  // One-time background render cost on a cache miss (slow — not user-facing speed).
+  const avgRenderTime = avg(timed.filter((r: any) => !r.cache_hit))
+  const avgResponseTime = avg(timed) // overall (kept for back-compat)
 
   const summary = {
     totalBotRequests,
     uniqueUrls,
     cacheHitRate,
     avgResponseTime,
+    avgCacheServeTime,
+    avgRenderTime,
     totalRenders: allRenders.length,
   }
 
@@ -213,6 +220,8 @@ function emptyResponse(usageStats: any) {
       uniqueUrls: 0,
       cacheHitRate: 0,
       avgResponseTime: 0,
+      avgCacheServeTime: 0,
+      avgRenderTime: 0,
       totalRenders: 0,
     },
     botTimeline: days.map((date) => ({ date, googlebot: 0, gptbot: 0, bingbot: 0, others: 0 })),

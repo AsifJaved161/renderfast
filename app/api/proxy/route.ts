@@ -66,6 +66,7 @@ async function resolveOwner(domain: string, token: string | null): Promise<Owner
 }
 
 export async function GET(req: NextRequest) {
+  const reqStart = Date.now() // to measure how fast a cache HIT is served
   const { searchParams } = req.nextUrl
   const targetUrl = req.headers.get('x-target-url') ?? searchParams.get('url')
   if (!targetUrl) {
@@ -120,7 +121,10 @@ export async function GET(req: NextRequest) {
   // ── Cache hit ────────────────────────────────────────────────────────────────
   const cached = await getCachedPage(domain, renderUrl)
   if (cached) {
-    logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, true, 0, 200)
+    // Real time the bot waited to receive the cached page (KV fetch + serve) —
+    // this is the "benefit" number shown to users, typically tens of ms.
+    const serveMs = Date.now() - reqStart
+    logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, true, serveMs, 200)
     revalidateIfExpired(domain, renderUrl)
     return serve(cached, wantsMarkdown, 'HIT', 200)
   }

@@ -16,12 +16,14 @@ import {
   Typography,
   Space,
   Alert,
+  Tooltip,
 } from 'antd'
 import {
   ThunderboltOutlined,
   CheckCircleOutlined,
-  ClockCircleOutlined,
+  ThunderboltFilled,
   LinkOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import { DonutChart, Legend, BarChart, LineChart } from '@/components/charts/Charts'
@@ -36,6 +38,8 @@ interface Analytics {
     uniqueUrls: number
     cacheHitRate: number
     avgResponseTime: number
+    avgCacheServeTime: number
+    avgRenderTime: number
     totalRenders: number
   }
   botTimeline: { date: string; googlebot: number; gptbot: number; bingbot: number; others: number }[]
@@ -53,6 +57,8 @@ const EMPTY: Analytics = {
     uniqueUrls: 0,
     cacheHitRate: 0,
     avgResponseTime: 0,
+    avgCacheServeTime: 0,
+    avgRenderTime: 0,
     totalRenders: 0,
   },
   botTimeline: [],
@@ -206,6 +212,7 @@ export default function DashboardPage() {
           title="Total Bot Requests"
           value={d.summary.totalBotRequests}
           icon={<ThunderboltOutlined style={{ color: BRAND }} />}
+          tooltip="How many times search & AI crawlers (Googlebot, GPTBot, etc.) hit your integrated domains."
         />
         <StatCard
           loading={loading}
@@ -213,19 +220,22 @@ export default function DashboardPage() {
           value={d.summary.cacheHitRate}
           suffix="%"
           icon={<CheckCircleOutlined style={{ color: BRAND }} />}
+          tooltip="Share of bot requests served instantly from cache — no fresh render needed. Higher is better; it climbs as your pages get cached."
         />
         <StatCard
           loading={loading}
-          title="Avg Response Time"
-          value={d.summary.avgResponseTime}
-          suffix="ms"
-          icon={<ClockCircleOutlined style={{ color: BRAND }} />}
+          title="Cache Response Time"
+          value={d.summary.avgCacheServeTime > 0 ? d.summary.avgCacheServeTime : '—'}
+          suffix={d.summary.avgCacheServeTime > 0 ? 'ms' : undefined}
+          icon={<ThunderboltFilled style={{ color: BRAND }} />}
+          tooltip={`How fast bots actually receive your pages from cache — this is your benefit. The one-time background render (~${d.summary.avgRenderTime || 0} ms) happens once and does NOT affect this; that's the whole point of caching.`}
         />
         <StatCard
           loading={loading}
           title="Unique URLs"
           value={d.summary.uniqueUrls}
           icon={<LinkOutlined style={{ color: BRAND }} />}
+          tooltip="Number of distinct pages crawled by bots on your domains."
         />
       </Row>
 
@@ -323,20 +333,32 @@ function StatCard({
   value,
   suffix,
   icon,
+  tooltip,
 }: {
   loading: boolean
   title: string
-  value: number
+  value: number | string
   suffix?: string
   icon: React.ReactNode
+  tooltip?: string
 }) {
+  const titleNode = tooltip ? (
+    <Space size={4}>
+      {title}
+      <Tooltip title={tooltip}>
+        <InfoCircleOutlined style={{ color: '#bfbfbf', fontSize: 12, cursor: 'help' }} />
+      </Tooltip>
+    </Space>
+  ) : (
+    title
+  )
   return (
     <Col xs={12} lg={6}>
       <Card>
         {loading ? (
           <Skeleton active paragraph={false} />
         ) : (
-          <Statistic title={title} value={value} suffix={suffix} prefix={icon} />
+          <Statistic title={titleNode} value={value} suffix={suffix} prefix={icon} />
         )}
       </Card>
     </Col>

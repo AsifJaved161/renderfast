@@ -20,7 +20,6 @@ import {
   ThunderboltOutlined,
   LinkOutlined,
   CheckCircleOutlined,
-  ClockCircleOutlined,
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import { DonutChart, Legend, BarChart, LineChart } from '@/components/charts/Charts'
@@ -35,6 +34,8 @@ interface Analytics {
     uniqueUrls: number
     cacheHitRate: number
     avgResponseTime: number
+    avgCacheServeTime: number
+    avgRenderTime: number
     totalRenders: number
   }
   botTimeline: { date: string; googlebot: number; gptbot: number; bingbot: number; others: number }[]
@@ -50,6 +51,8 @@ const EMPTY: Analytics = {
     uniqueUrls: 0,
     cacheHitRate: 0,
     avgResponseTime: 0,
+    avgCacheServeTime: 0,
+    avgRenderTime: 0,
     totalRenders: 0,
   },
   botTimeline: [],
@@ -172,7 +175,7 @@ export default function CdnAnalyticsPage() {
         <SummaryCard loading={loading} title="Total Bot Requests" value={data.summary.totalBotRequests} icon={<ThunderboltOutlined style={{ color: BRAND }} />} />
         <SummaryCard loading={loading} title="Unique URLs Crawled" value={data.summary.uniqueUrls} icon={<LinkOutlined style={{ color: BRAND }} />} />
         <SummaryCard loading={loading} title="Cache Hit Rate" value={data.summary.cacheHitRate} suffix="%" icon={<CheckCircleOutlined style={{ color: BRAND }} />} />
-        <SummaryCard loading={loading} title="Avg Response Time" value={data.summary.avgResponseTime} suffix="ms" icon={<ClockCircleOutlined style={{ color: BRAND }} />} />
+        <SummaryCard loading={loading} title="Cache Response Time" value={data.summary.avgCacheServeTime} suffix="ms" icon={<ThunderboltOutlined style={{ color: BRAND }} />} />
       </Row>
 
       {/* ── Timeline + Donut ────────────────────────────────────────────────── */}
