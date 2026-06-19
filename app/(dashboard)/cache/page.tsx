@@ -295,37 +295,37 @@ export default function CachePage() {
               ),
             },
             {
-              title: 'Status',
+              title: <StatTitle hint="HTTP status of the cached page (200 = OK).">Status</StatTitle>,
               dataIndex: 'status_code',
-              width: 90,
+              width: 110,
               render: (code: number | null) => <Tag color={statusColor(code)}>{code ?? '—'}</Tag>,
             },
             {
-              title: 'Cached At',
+              title: <StatTitle hint="When this page was rendered & stored in cache.">Cached At</StatTitle>,
               dataIndex: 'cached_at',
-              width: 170,
+              width: 180,
               render: (v: string) => new Date(v).toLocaleString(),
             },
             {
-              title: 'Expires At',
+              title: <StatTitle hint="When the cache goes stale and the page is re-rendered.">Expires At</StatTitle>,
               dataIndex: 'expires_at',
-              width: 170,
+              width: 180,
               render: (v: string | null) => (v ? new Date(v).toLocaleString() : '—'),
             },
             {
-              title: 'Size',
+              title: <StatTitle hint="Size of the cached HTML page.">Size</StatTitle>,
               dataIndex: 'html_size_bytes',
-              width: 100,
+              width: 110,
               render: (b: number | null) => (b ? `${(b / 1024).toFixed(1)} KB` : '—'),
             },
             {
-              title: 'Render',
+              title: <StatTitle hint="One-time time it took to render this page (background — not what bots wait for).">Render</StatTitle>,
               dataIndex: 'render_time_ms',
-              width: 100,
+              width: 110,
               render: (v: number | null) => (v ? `${v} ms` : '—'),
             },
             {
-              title: 'Actions',
+              title: <StatTitle hint="Re-render, view the cached HTML, or delete this entry.">Actions</StatTitle>,
               width: 130,
               render: (_, row) => (
                 <Space>

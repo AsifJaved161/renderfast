@@ -13,6 +13,20 @@ function userId(req: NextRequest) {
   return req.headers.get('x-user-id')
 }
 
+// Junk URL patterns that should never appear in the cache list/stats (search
+// results, /api, admin, feeds, config/non-HTML files, cart actions). Old entries
+// rendered before URL-filtering existed are hidden here and expire on their own.
+const JUNK_PATTERNS = [
+  '%?s=%', '%&s=%', '%/api/%', '%/wp-admin/%', '%/wp-json/%', '%/wp-login%',
+  '%xmlrpc.php%', '%/feed%', '%/cart%', '%/checkout%', '%/my-account%',
+  '%?add-to-cart=%', '%?replytocom=%', '%.env%', '%.json', '%.xml',
+]
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function excludeJunk<T extends { not: (...a: any[]) => T }>(q: T): T {
+  for (const p of JUNK_PATTERNS) q = q.not('url', 'ilike', p)
+  return q
+}
+
 // Confirm a site belongs to the user (returns its domain, or null).
 async function ownedSiteDomain(siteId: string, uid: string): Promise<string | null> {
   const { data } = await supabaseAdmin
@@ -39,6 +53,7 @@ export async function GET(req: NextRequest) {
       .select('id', { count: 'exact', head: true })
       .eq('user_id', uid)
     if (siteId) countQ = countQ.eq('site_id', siteId)
+    countQ = excludeJunk(countQ)
     const { count } = await countQ
 
     let sizeQ = supabaseAdmin
@@ -47,6 +62,7 @@ export async function GET(req: NextRequest) {
       .eq('user_id', uid)
       .limit(5000)
     if (siteId) sizeQ = sizeQ.eq('site_id', siteId)
+    sizeQ = excludeJunk(sizeQ)
     const { data: rows } = await sizeQ
 
     let totalSizeBytes = 0
@@ -97,6 +113,7 @@ export async function GET(req: NextRequest) {
     .order('cached_at', { ascending: false })
     .range((page - 1) * limit, page * limit - 1)
   if (siteId) query = query.eq('site_id', siteId)
+  query = excludeJunk(query)
 
   const { data, count, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
