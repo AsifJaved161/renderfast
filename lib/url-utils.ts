@@ -12,6 +12,7 @@ const TRACKING_PARAMS = new Set([
   'gclid', 'gclsrc', 'dclid', 'fbclid', 'msclkid', 'wbraid', 'gbraid', 'yclid', 'twclid',
   'mc_cid', 'mc_eid', '_ga', '_gl', 'igshid', 'si', 'ref', 'ref_src', 'ref_url', 'source',
   'spm', 'scm', 'vero_id', 'vero_conv', 'oly_anon_id', 'oly_enc_id', 'hsa_cam', 'hsa_grp',
+  'amp', 'noamp', // AMP variants → fold into the canonical page
 ])
 
 // Strip tracking params + hash, sort remaining params for a stable cache key.
@@ -36,6 +37,8 @@ export function normalizeUrl(input: string): string {
 // Path segments that are never SEO content worth pre-rendering.
 const SKIP_PATH = /\/(wp-admin|wp-json|wp-login|xmlrpc\.php|cgi-bin|feed|comments\/feed|cart|checkout|my-account|wishlist)(\/|$|\.)/i
 const SKIP_API = /^\/api(\/|$)/i
+// Non-HTML resources / config & source files that must never be in SEO diagnostics.
+const SKIP_EXT = /\.(env|json|xml|txt|js|mjs|cjs|css|map|ico|png|jpe?g|gif|svg|webp|avif|woff2?|ttf|eot|pdf|zip|gz|rar|lock|ya?ml|toml|ini|sh|bash|py|rb|php|sql|md|log|bak|old|example|sample|dist|conf|cfg)$/i
 // Query keys whose presence marks a non-content page (WP search, cart actions…).
 const SKIP_QUERY = ['s', 'add-to-cart', 'remove_item', 'replytocom', 'feed', 'sidebar', 'elementor-preview', 'preview', 'attachment_id']
 
@@ -45,6 +48,9 @@ export function isRenderableUrl(input: string): boolean {
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return false
     if (SKIP_API.test(u.pathname)) return false
     if (SKIP_PATH.test(u.pathname)) return false
+    if (SKIP_EXT.test(u.pathname)) return false // .env, .json, .xml, scripts, images…
+    const lastSeg = u.pathname.split('/').pop() ?? ''
+    if (lastSeg.startsWith('.')) return false // dotfiles: /.env, /.env.example, /.git/…
     for (const key of SKIP_QUERY) if (u.searchParams.has(key)) return false
     return true
   } catch {

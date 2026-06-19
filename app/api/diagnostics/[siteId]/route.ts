@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { isRenderConfigured } from '@/lib/renderer'
 import { processDiagnosticsJob, isUrlOnDomain, reclaimIfStale } from '@/lib/diagnostics-worker'
 import { getOpsConfig } from '@/lib/app-config'
+import { isRenderableUrl } from '@/lib/url-utils'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -10,6 +11,9 @@ export const maxDuration = 60
 
 // How many recent rows to pull (covers ~the latest run of each URL on a site).
 const SCAN_LIMIT = 400
+// Real Cloudflare renders take seconds; anything faster is the "not configured"
+// stub (renderTimeMs = 50) — exclude those false positives from diagnostics.
+const MIN_REAL_RENDER_MS = 200
 // Re-scan caps.
 const RESCAN_COOLDOWN_MS = 10 * 60 * 1000 // 1 scan per site / 10 min
 const MAX_ACTIVE_JOBS_PER_USER = 3 // cap concurrent/pending jobs across all sites
@@ -70,7 +74,13 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ siteId: str
       .order('rendered_at', { ascending: false })
       .limit(SCAN_LIMIT)
 
-    const all = (rows ?? []) as DiagRow[]
+    // Only keep real, content-worthy pages: drop junk URLs (search, /api, .env,
+    // tracking-param dupes…) and stub rows from before rendering was configured.
+    const all = ((rows ?? []) as DiagRow[]).filter(
+      (r) =>
+        isRenderableUrl(r.url) &&
+        !(r.render_time_ms != null && r.render_time_ms < MIN_REAL_RENDER_MS)
+    )
 
     // Keep only the most-recent diagnostic per URL (rows already sorted desc).
     const latestByUrl = new Map<string, DiagRow>()
@@ -256,7 +266,9 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ siteId: st
       urls = (queued ?? []).map((r: { url: string }) => r.url)
     }
 
-    urls = Array.from(new Set(urls.filter((u) => isUrlOnDomain(u, site.domain)))).slice(0, maxRescanUrls)
+    urls = Array.from(
+      new Set(urls.filter((u) => isUrlOnDomain(u, site.domain) && isRenderableUrl(u)))
+    ).slice(0, maxRescanUrls)
 
     if (urls.length === 0) {
       return NextResponse.json({
