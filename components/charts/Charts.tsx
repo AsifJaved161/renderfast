@@ -118,69 +118,69 @@ export function Legend({ data }: { data: Slice[] }) {
   )
 }
 
+// Distinct, accessible palette so each bar/category reads as its own colour.
+export const CHART_PALETTE = [
+  '#2da01d', '#1677ff', '#722ed1', '#fa8c16', '#13c2c2',
+  '#eb2f96', '#f5222d', '#faad14', '#2f54eb', '#52c41a',
+]
+
 // ─── Vertical bar chart (hits by bot) ──────────────────────────────────────────
 export function BarChart({
   data,
   height = 220,
-  color = '#2da01d',
+  colors = CHART_PALETTE,
 }: {
   data: { label: string; value: number }[]
   height?: number
-  color?: string
+  colors?: string[]
 }) {
   const max = Math.max(...data.map((d) => d.value), 1)
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, height, overflowX: 'auto' }}>
-      {data.map((d, i) => (
-        <div
-          key={`${d.label}-${i}`}
-          style={{
-            flex: '1 0 36px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            height: '100%',
-          }}
-        >
+    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height, overflowX: 'auto', paddingTop: 8 }}>
+      {data.map((d, i) => {
+        const color = colors[i % colors.length]
+        return (
           <div
-            style={{
-              flex: 1,
-              width: '100%',
-              display: 'flex',
-              alignItems: 'flex-end',
-              justifyContent: 'center',
-            }}
+            key={`${d.label}-${i}`}
+            style={{ flex: '1 0 44px', display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%' }}
           >
-            <div
-              title={`${d.label}: ${d.value.toLocaleString()}`}
+            {/* bar + value label on top */}
+            <div style={{ flex: 1, width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end' }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 4 }}>
+                {d.value.toLocaleString()}
+              </span>
+              <div
+                title={`${d.label}: ${d.value.toLocaleString()}`}
+                style={{
+                  width: '68%',
+                  maxWidth: 34,
+                  height: `${(d.value / max) * 100}%`,
+                  background: `linear-gradient(180deg, ${color} 0%, ${color}cc 100%)`,
+                  borderRadius: '6px 6px 0 0',
+                  minHeight: 4,
+                  boxShadow: `0 1px 4px ${color}33`,
+                  transition: 'height 0.3s',
+                }}
+              />
+            </div>
+            <span
               style={{
-                width: '70%',
-                maxWidth: 28,
-                height: `${(d.value / max) * 100}%`,
-                background: color,
-                borderRadius: '4px 4px 0 0',
-                minHeight: 2,
-                transition: 'height 0.3s',
+                fontSize: 11,
+                color: '#6b7280',
+                marginTop: 8,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                maxWidth: 60,
+                textAlign: 'center',
               }}
-            />
+              title={d.label}
+            >
+              {d.label}
+            </span>
           </div>
-          <span
-            style={{
-              fontSize: 10,
-              color: '#6b7280',
-              marginTop: 6,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              maxWidth: 48,
-              textAlign: 'center',
-            }}
-            title={d.label}
-          >
-            {d.label}
-          </span>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -198,12 +198,14 @@ export function LineChart({
   height = 220,
   unit = '',
   fill = false,
+  showLegend = true,
 }: {
   series: LineSeries[]
   labels: string[]
   height?: number
   unit?: string
   fill?: boolean
+  showLegend?: boolean
 }) {
   const W = 760
   const H = height
@@ -225,13 +227,24 @@ export function LineChart({
   const gridLines = [0, 0.25, 0.5, 0.75, 1]
 
   return (
-    <svg
-      width="100%"
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="xMidYMid meet"
-      role="img"
-      style={{ display: 'block' }}
-    >
+    <div>
+      {showLegend && series.length > 1 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 10, justifyContent: 'center' }}>
+          {series.map((s) => (
+            <span key={s.label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#374151' }}>
+              <span style={{ width: 14, height: 3, borderRadius: 2, background: s.color, display: 'inline-block' }} />
+              {s.label}
+            </span>
+          ))}
+        </div>
+      )}
+      <svg
+        width="100%"
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="xMidYMid meet"
+        role="img"
+        style={{ display: 'block' }}
+      >
       {/* horizontal grid + y labels */}
       {gridLines.map((g, i) => {
         const yy = padT + innerH - g * innerH
@@ -283,6 +296,7 @@ export function LineChart({
           </g>
         )
       })}
-    </svg>
+      </svg>
+    </div>
   )
 }
