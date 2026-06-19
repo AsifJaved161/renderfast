@@ -201,6 +201,7 @@ export function LineChart({
   unit = '',
   fill = false,
   showLegend = true,
+  showDots = true,
 }: {
   series: LineSeries[]
   labels: string[]
@@ -208,6 +209,7 @@ export function LineChart({
   unit?: string
   fill?: boolean
   showLegend?: boolean
+  showDots?: boolean
 }) {
   const W = 760
   const H = height
@@ -290,11 +292,12 @@ export function LineChart({
               strokeLinecap="round"
               vectorEffect="non-scaling-stroke"
             />
-            {s.points.map((v, i) => (
-              <circle key={i} cx={x(i)} cy={y(v)} r={2.5} fill={s.color}>
-                <title>{`${labels[i]} — ${s.label}: ${v.toLocaleString()}${unit}`}</title>
-              </circle>
-            ))}
+            {showDots &&
+              s.points.map((v, i) => (
+                <circle key={i} cx={x(i)} cy={y(v)} r={2.5} fill={s.color}>
+                  <title>{`${labels[i]} — ${s.label}: ${v.toLocaleString()}${unit}`}</title>
+                </circle>
+              ))}
           </g>
         )
       })}
@@ -386,8 +389,8 @@ export function MetricTilesChart({
         })}
       </div>
 
-      {/* chart (only active series) */}
-      <LineChart labels={labels} series={shown} height={height} showLegend={false} fill />
+      {/* chart (only active series) — clean lines, no fill/dots, like GSC */}
+      <LineChart labels={labels} series={shown} height={height} showLegend={false} showDots={false} />
     </div>
   )
 }
