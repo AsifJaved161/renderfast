@@ -9,6 +9,7 @@ import { setCachedPage } from '@/lib/kv'
 import { renderPage } from '@/lib/renderer'
 import { getOpsConfig } from '@/lib/app-config'
 import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
+import { captureValidators, HARD_CACHE_TTL } from '@/lib/revalidate'
 import { supabaseAdmin } from '@/lib/supabase'
 
 const BATCH = 5
@@ -117,7 +118,9 @@ export async function drainQueue(
         continue
       }
 
-      await setCachedPage(domain, renderUrl, result.html, cacheTtlSeconds)
+      // KV persists (HARD_CACHE_TTL); freshness is driven by change-detection.
+      await setCachedPage(domain, renderUrl, result.html, HARD_CACHE_TTL)
+      const v = await captureValidators(renderUrl)
       await supabaseAdmin.from('cache_entries').upsert(
         {
           site_id: item.site_id,
@@ -130,6 +133,7 @@ export async function drainQueue(
           cached_at: new Date().toISOString(),
           expires_at: new Date(Date.now() + cacheTtlSeconds * 1000).toISOString(),
           is_mobile: false,
+          ...(v ?? {}),
         },
         { onConflict: 'url_hash' }
       )

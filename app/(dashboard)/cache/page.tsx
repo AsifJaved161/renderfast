@@ -307,7 +307,7 @@ export default function CachePage() {
               render: (v: string) => new Date(v).toLocaleString(),
             },
             {
-              title: <StatTitle hint="When the cache goes stale and the page is re-rendered.">Expires At</StatTitle>,
+              title: <StatTitle hint="Next time we check the origin for changes — the page is only re-rendered if its content actually changed.">Expires At</StatTitle>,
               dataIndex: 'expires_at',
               width: 180,
               render: (v: string | null) => (v ? new Date(v).toLocaleString() : '—'),

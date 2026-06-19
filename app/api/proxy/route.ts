@@ -5,6 +5,7 @@ import { renderPage, htmlToMarkdown } from '@/lib/renderer'
 import { captureDiagnostics } from '@/lib/diagnostics'
 import { getOpsConfig } from '@/lib/app-config'
 import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
+import { captureValidators, originChanged, HARD_CACHE_TTL as HARD_TTL } from '@/lib/revalidate'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
@@ -125,7 +126,7 @@ export async function GET(req: NextRequest) {
     // this is the "benefit" number shown to users, typically tens of ms.
     const serveMs = Date.now() - reqStart
     logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, true, serveMs, 200)
-    revalidateIfExpired(domain, renderUrl)
+    revalidateIfChanged(domain, renderUrl, cached)
     return serve(cached, wantsMarkdown, 'HIT', 200)
   }
 
@@ -136,13 +137,17 @@ export async function GET(req: NextRequest) {
   }
 
   const { cacheTtlSeconds } = await getOpsConfig()
-  await setCachedPage(domain, renderUrl, html, cacheTtlSeconds)
+  await setCachedPage(domain, renderUrl, html, HARD_TTL) // persist; freshness via revalidation
   await persistRender(owner, domain, renderParsed, html, renderTimeMs, statusCode, cacheTtlSeconds)
   logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, false, renderTimeMs, statusCode)
 
-  // ── Render Diagnostics (isolated, non-blocking) ──────────────────────────────
-  // Runs after the response is sent; never affects what the crawler receives.
-  after(() => captureDiagnostics({ siteId: owner.siteId, url: renderUrl, renderedHtml: html, renderTimeMs }))
+  // ── Background (non-blocking): diagnostics + capture change-detection
+  //    validators so future checks can skip the render if nothing changed. ──────
+  after(async () => {
+    captureDiagnostics({ siteId: owner.siteId, url: renderUrl, renderedHtml: html, renderTimeMs })
+    const v = await captureValidators(renderUrl)
+    if (v) await supabaseAdmin.from('cache_entries').update(v).eq('url', renderUrl).eq('user_id', owner.userId)
+  })
 
   return serve(html, wantsMarkdown, 'MISS', statusCode)
 }
@@ -241,26 +246,52 @@ function logRender(
   })()
 }
 
-// Background re-render when the DB record says the cache expired.
-function revalidateIfExpired(domain: string, url: string) {
+// Smart background revalidation: once the soft check-window elapses, ask the
+// origin (cheaply) whether the page CHANGED. Only re-render if it did — an
+// unchanged page just gets its cache window + KV lifetime refreshed, saving the
+// expensive render entirely. Never blocks the served response.
+function revalidateIfChanged(domain: string, url: string, cachedHtml: string) {
   ;(async () => {
     try {
       const { data } = await supabaseAdmin
         .from('cache_entries')
-        .select('expires_at')
+        .select('expires_at, etag, last_modified, content_hash')
         .eq('url', url)
         .maybeSingle()
-      if (data?.expires_at && new Date(data.expires_at) > new Date()) return
+      if (!data) return
+      // Not due for a check yet → nothing to do.
+      if (data.expires_at && new Date(data.expires_at) > new Date()) return
 
-      const { html, error } = await renderPage(url)
+      const { cacheTtlSeconds } = await getOpsConfig()
+      const nextWindow = new Date(Date.now() + cacheTtlSeconds * 1000).toISOString()
+      const changed = await originChanged(url, {
+        etag: data.etag,
+        last_modified: data.last_modified,
+        content_hash: data.content_hash,
+      })
+
+      // Unchanged (or origin unreachable) → DON'T render. Refresh KV lifetime +
+      // the next check window, keep serving the existing cache.
+      if (changed === false || changed === null) {
+        await setCachedPage(domain, url, cachedHtml, HARD_TTL)
+        await supabaseAdmin.from('cache_entries').update({ expires_at: nextWindow }).eq('url', url)
+        return
+      }
+
+      // Content changed → re-render and refresh everything.
+      const { html, error, renderTimeMs, statusCode } = await renderPage(url)
       if (!error && html) {
-        const { cacheTtlSeconds } = await getOpsConfig()
-        await setCachedPage(domain, url, html, cacheTtlSeconds)
+        await setCachedPage(domain, url, html, HARD_TTL)
+        const v = await captureValidators(url)
         await supabaseAdmin
           .from('cache_entries')
           .update({
             cached_at: new Date().toISOString(),
-            expires_at: new Date(Date.now() + cacheTtlSeconds * 1000).toISOString(),
+            expires_at: nextWindow,
+            html_size_bytes: Buffer.byteLength(html, 'utf8'),
+            render_time_ms: renderTimeMs,
+            status_code: statusCode,
+            ...(v ?? {}),
           })
           .eq('url', url)
       }

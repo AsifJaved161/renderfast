@@ -108,7 +108,10 @@ create table if not exists public.cache_entries (
   render_time_ms  integer,
   cached_at       timestamptz not null default now(),
   expires_at      timestamptz,
-  is_mobile       boolean not null default false
+  is_mobile       boolean not null default false,
+  content_hash    text,
+  etag            text,
+  last_modified   text
 );
 
 -- ══════════════════════════════════════════════════════════════════════════════
