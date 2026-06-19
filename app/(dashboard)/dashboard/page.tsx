@@ -27,6 +27,7 @@ import {
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import { DonutChart, Legend, BarChart, MetricTilesChart } from '@/components/charts/Charts'
+import { StatTitle } from '@/components/ui/StatTitle'
 
 const BRAND = '#2da01d'
 const { Title, Text } = Typography
@@ -309,11 +310,23 @@ export default function DashboardPage() {
             { title: 'Hits', dataIndex: 'hits', width: 100 },
             { title: 'Unique Bots', dataIndex: 'uniqueBots', width: 120 },
             {
-              title: 'Cache',
+              title: (
+                <StatTitle hint="HIT = served instantly from cache. MISS = wasn't cached yet, so it was rendered fresh. The first hit of any page is always a MISS — the next becomes a HIT.">
+                  Cache
+                </StatTitle>
+              ),
               dataIndex: 'cacheHit',
               width: 100,
               render: (hit: boolean) =>
-                hit ? <Tag color="green">HIT</Tag> : <Tag color="default">MISS</Tag>,
+                hit ? (
+                  <Tooltip title="Served instantly from cache — no render needed.">
+                    <Tag color="green">HIT</Tag>
+                  </Tooltip>
+                ) : (
+                  <Tooltip title="Wasn't cached yet, so it was rendered fresh this time. The first hit is always a MISS; the next will be a HIT.">
+                    <Tag color="default">MISS</Tag>
+                  </Tooltip>
+                ),
             },
             {
               title: 'Last Crawled',

@@ -25,6 +25,7 @@ import {
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import { DonutChart, Legend, BarChart, MetricTilesChart } from '@/components/charts/Charts'
+import { StatTitle } from '@/components/ui/StatTitle'
 
 const BRAND = '#2da01d'
 const { Title } = Typography
@@ -286,11 +287,23 @@ export default function CdnAnalyticsPage() {
               render: (v: string) => new Date(v).toLocaleString(),
             },
             {
-              title: 'Cache Status',
+              title: (
+                <StatTitle hint="HIT = served instantly from cache. MISS = wasn't cached yet, so it was rendered fresh this time. The first hit of any page is always a MISS — the next one becomes a HIT.">
+                  Cache Status
+                </StatTitle>
+              ),
               dataIndex: 'cacheHit',
               width: 130,
               render: (hit: boolean) =>
-                hit ? <Tag color="green">HIT</Tag> : <Tag color="default">MISS</Tag>,
+                hit ? (
+                  <Tooltip title="Served instantly from cache — no render needed.">
+                    <Tag color="green">HIT</Tag>
+                  </Tooltip>
+                ) : (
+                  <Tooltip title="Wasn't cached yet, so it was rendered fresh this time. The first hit is always a MISS; the next will be a HIT.">
+                    <Tag color="default">MISS</Tag>
+                  </Tooltip>
+                ),
             },
           ]}
         />
