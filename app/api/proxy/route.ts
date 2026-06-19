@@ -4,6 +4,7 @@ import { getCachedPage, setCachedPage } from '@/lib/kv'
 import { renderPage, htmlToMarkdown } from '@/lib/renderer'
 import { captureDiagnostics } from '@/lib/diagnostics'
 import { getOpsConfig } from '@/lib/app-config'
+import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
@@ -103,31 +104,41 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(targetUrl, 302)
   }
 
+  // Low-value URL (search, /api, admin, feed, cart…) → don't spend a render;
+  // send the bot straight to origin.
+  if (!isRenderableUrl(targetUrl)) {
+    return NextResponse.redirect(targetUrl, 302)
+  }
+
+  // Normalize away tracking params so /p and /p?utm=… share one cache entry.
+  const renderUrl = normalizeUrl(targetUrl)
+  const renderParsed = new URL(renderUrl)
+
   const wantsMarkdown =
     bot.botType === 'ai' && (req.headers.get('accept') ?? '').includes('text/markdown')
 
   // ── Cache hit ────────────────────────────────────────────────────────────────
-  const cached = await getCachedPage(domain, targetUrl)
+  const cached = await getCachedPage(domain, renderUrl)
   if (cached) {
-    logRender(owner, domain, targetUrl, bot, ua, req, wantsMarkdown, true, 0, 200)
-    revalidateIfExpired(domain, targetUrl)
+    logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, true, 0, 200)
+    revalidateIfExpired(domain, renderUrl)
     return serve(cached, wantsMarkdown, 'HIT', 200)
   }
 
   // ── Cache miss: render now ──────────────────────────────────────────────────
-  const { html, renderTimeMs, statusCode, error } = await renderPage(targetUrl)
+  const { html, renderTimeMs, statusCode, error } = await renderPage(renderUrl)
   if (error || !html) {
     return NextResponse.redirect(targetUrl, 302)
   }
 
   const { cacheTtlSeconds } = await getOpsConfig()
-  await setCachedPage(domain, targetUrl, html, cacheTtlSeconds)
-  await persistRender(owner, domain, parsed, html, renderTimeMs, statusCode, cacheTtlSeconds)
-  logRender(owner, domain, targetUrl, bot, ua, req, wantsMarkdown, false, renderTimeMs, statusCode)
+  await setCachedPage(domain, renderUrl, html, cacheTtlSeconds)
+  await persistRender(owner, domain, renderParsed, html, renderTimeMs, statusCode, cacheTtlSeconds)
+  logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, false, renderTimeMs, statusCode)
 
   // ── Render Diagnostics (isolated, non-blocking) ──────────────────────────────
   // Runs after the response is sent; never affects what the crawler receives.
-  after(() => captureDiagnostics({ siteId: owner.siteId, url: targetUrl, renderedHtml: html, renderTimeMs }))
+  after(() => captureDiagnostics({ siteId: owner.siteId, url: renderUrl, renderedHtml: html, renderTimeMs }))
 
   return serve(html, wantsMarkdown, 'MISS', statusCode)
 }

@@ -2,6 +2,7 @@ import axios from 'axios'
 import { parseStringPromise } from 'xml2js'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getOpsConfig } from '@/lib/app-config'
+import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
 
 // Keep batches sane for free-tier DBs / function timeouts.
 const MAX_CHILD_SITEMAPS = 20
@@ -97,7 +98,10 @@ export async function discoverAndQueueSitemap(
     }
   }
 
-  const urlList = Array.from(pages).slice(0, MAX_URLS)
+  // Normalize (strip tracking params), drop low-value URLs, dedupe, then cap.
+  const urlList = Array.from(
+    new Set(Array.from(pages).map(normalizeUrl).filter(isRenderableUrl))
+  ).slice(0, MAX_URLS)
   const sitemapUrl = usedSitemap ?? candidates[0] ?? `https://${domain}/sitemap.xml`
   const ok = urlList.length > 0
 

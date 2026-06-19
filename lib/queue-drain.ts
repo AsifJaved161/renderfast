@@ -8,6 +8,7 @@
 import { setCachedPage } from '@/lib/kv'
 import { renderPage } from '@/lib/renderer'
 import { getOpsConfig } from '@/lib/app-config'
+import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
 import { supabaseAdmin } from '@/lib/supabase'
 
 const BATCH = 5
@@ -53,6 +54,24 @@ export async function drainQueue(
     for (const item of items) {
       if (Date.now() >= deadline || processed + failed >= maxUrls) break
 
+      // Low-value URL (search/admin/api/feed/cart…) → never render it; drop it
+      // from the queue (the bot gets origin via the proxy anyway).
+      if (!isRenderableUrl(item.url)) {
+        await supabaseAdmin.from('caching_queue').delete().eq('id', item.id)
+        continue
+      }
+
+      // Normalize away tracking params so the cache key matches the proxy's.
+      const renderUrl = normalizeUrl(item.url)
+      let domain = ''
+      let parsed: URL | null = null
+      try {
+        parsed = new URL(renderUrl)
+        domain = parsed.hostname
+      } catch {
+        /* invalid URL → fail below */
+      }
+
       // Efficiency: skip URLs that are already freshly cached — a render is the
       // expensive, rate-limited resource, so never spend one on a still-valid
       // page. Marks the item done from the existing cache.
@@ -60,7 +79,7 @@ export async function drainQueue(
         .from('cache_entries')
         .select('expires_at')
         .eq('site_id', item.site_id)
-        .eq('url', item.url)
+        .eq('url', renderUrl)
         .maybeSingle()
       if (fresh?.expires_at && new Date(fresh.expires_at) > new Date()) {
         await supabaseAdmin
@@ -74,16 +93,7 @@ export async function drainQueue(
       // Claim the item so parallel drainers don't double-render it.
       await supabaseAdmin.from('caching_queue').update({ status: 'rendering' }).eq('id', item.id)
 
-      let domain = ''
-      let parsed: URL | null = null
-      try {
-        parsed = new URL(item.url)
-        domain = parsed.hostname
-      } catch {
-        /* invalid URL → fail below */
-      }
-
-      const result = parsed ? await renderPage(item.url) : null
+      const result = parsed ? await renderPage(renderUrl) : null
 
       // Rate-limited → transient: put it back to 'pending' and stop this run so
       // the cron / next call retries later instead of burning the whole queue.
@@ -107,12 +117,12 @@ export async function drainQueue(
         continue
       }
 
-      await setCachedPage(domain, item.url, result.html, cacheTtlSeconds)
+      await setCachedPage(domain, renderUrl, result.html, cacheTtlSeconds)
       await supabaseAdmin.from('cache_entries').upsert(
         {
           site_id: item.site_id,
           user_id: item.user_id,
-          url: item.url,
+          url: renderUrl,
           url_hash: `${domain}:${parsed.pathname}${parsed.search}`,
           status_code: result.statusCode,
           html_size_bytes: Buffer.byteLength(result.html, 'utf8'),
