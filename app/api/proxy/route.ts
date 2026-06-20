@@ -125,10 +125,12 @@ export async function GET(req: NextRequest) {
     // Real time the bot waited to receive the cached page (KV fetch + serve) —
     // this is the "benefit" number shown to users, typically tens of ms.
     const serveMs = Date.now() - reqStart
+    const body = toBody(cached, wantsMarkdown)
     logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, true, serveMs, 200)
+    logBotTraffic(owner.siteId, bot.botName, Buffer.byteLength(body, 'utf8'))
     // after() keeps this alive past the response so it can't be killed mid-flight.
     after(() => revalidateChanged(domain, renderUrl, cached))
-    return serve(cached, wantsMarkdown, 'HIT', 200)
+    return serve(body, wantsMarkdown, 'HIT', 200)
   }
 
   // ── Cache miss: render now ──────────────────────────────────────────────────
@@ -140,7 +142,9 @@ export async function GET(req: NextRequest) {
   const { cacheTtlSeconds } = await getOpsConfig()
   await setCachedPage(domain, renderUrl, html, HARD_TTL) // persist; freshness via revalidation
   await persistRender(owner, domain, renderParsed, html, renderTimeMs, statusCode, cacheTtlSeconds)
+  const body = toBody(html, wantsMarkdown)
   logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, false, renderTimeMs, statusCode)
+  logBotTraffic(owner.siteId, bot.botName, Buffer.byteLength(body, 'utf8'))
 
   // ── Background (non-blocking): ONE origin fetch feeds both diagnostics and
   //    the change-detection validators (no duplicate request). ─────────────────
@@ -176,17 +180,37 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  return serve(html, wantsMarkdown, 'MISS', statusCode)
+  return serve(body, wantsMarkdown, 'MISS', statusCode)
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-function serve(html: string, wantsMarkdown: boolean, cacheStatus: 'HIT' | 'MISS', status: number) {
-  const body = wantsMarkdown ? htmlToMarkdown(html) : html
+// Convert the rendered HTML into the body actually served to the bot (HTML, or
+// Markdown for AI crawlers that asked for it). Done once so the served byte size
+// can be measured without re-running the markdown conversion.
+function toBody(html: string, wantsMarkdown: boolean): string {
+  return wantsMarkdown ? htmlToMarkdown(html) : html
+}
+
+function serve(body: string, wantsMarkdown: boolean, cacheStatus: 'HIT' | 'MISS', status: number) {
   const contentType = wantsMarkdown ? 'text/markdown; charset=utf-8' : 'text/html; charset=utf-8'
   return new NextResponse(body, {
     status,
     headers: { ...BASE_HEADERS, 'Content-Type': contentType, 'X-Cache-Status': cacheStatus },
   })
+}
+
+// Fire-and-forget: bump the per-site/per-bot/per-day volume counters. Unknown or
+// unclassified bots collapse into a single 'other' bucket (the RPC coalesces an
+// empty/null name) so the table can never grow unbounded distinct rows. Never
+// blocks or throws into the served response (e.g. table missing pre-migration).
+function logBotTraffic(siteId: string, botName: string | null, bytes: number) {
+  void supabaseAdmin
+    .rpc('increment_bot_traffic', {
+      p_site_id: siteId,
+      p_bot_name: botName ?? 'other',
+      p_bytes: bytes,
+    })
+    .then(() => {}, () => {})
 }
 
 // Bill the render: bump counters + write cache_entries metadata.
