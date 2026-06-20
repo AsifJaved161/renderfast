@@ -91,6 +91,7 @@ create table if not exists public.sitemaps (
   last_crawled_at timestamptz,
   urls_found      integer not null default 0,
   status          text not null default 'active' check (status in ('active', 'paused', 'error')),
+  check_interval_days integer not null default 5,
   created_at      timestamptz not null default now()
 );
 

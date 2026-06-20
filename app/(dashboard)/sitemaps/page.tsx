@@ -11,6 +11,7 @@ import {
   Space,
   Typography,
   Empty,
+  InputNumber,
   message,
   notification,
 } from 'antd'
@@ -18,6 +19,7 @@ import {
   ReloadOutlined,
   ThunderboltOutlined,
   GlobalOutlined,
+  SyncOutlined,
 } from '@ant-design/icons'
 
 const BRAND = '#2da01d'
@@ -34,6 +36,7 @@ interface SitemapMeta {
   urls_found: number
   status: string
   last_crawled_at: string | null
+  check_interval_days?: number
 }
 
 type UrlStatus = 'pending' | 'rendering' | 'completed' | 'failed'
@@ -86,6 +89,8 @@ export default function SitemapsPage() {
   const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(false)
   const [rendering, setRendering] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [recheckDays, setRecheckDays] = useState(5)
   const limit = 25
 
   // Load site list once; default to the first site.
@@ -117,7 +122,9 @@ export default function SitemapsPage() {
       setUrls(urlRes.urls ?? [])
       setTotal(urlRes.total ?? 0)
       setCounts(urlRes.counts ?? { pending: 0, rendering: 0, completed: 0, failed: 0, total: 0 })
-      setMeta((smRes.data ?? [])[0] ?? null)
+      const m = (smRes.data ?? [])[0] ?? null
+      setMeta(m)
+      if (m?.check_interval_days) setRecheckDays(m.check_interval_days)
     } catch {
       message.error('Failed to load URLs')
     } finally {
@@ -175,6 +182,35 @@ export default function SitemapsPage() {
       await loadUrls()
     } finally {
       setRendering(false)
+    }
+  }
+
+  // Re-crawl the sitemap now and queue only new / newer-<lastmod> pages.
+  // Also saves the re-check interval used by the daily cron.
+  async function recheckNow() {
+    if (!siteId) return
+    setChecking(true)
+    try {
+      const res = await fetch('/api/sitemaps/recheck', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ site_id: siteId, interval_days: recheckDays }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        message.error(data.error ?? 'Re-check failed')
+        return
+      }
+      notification.success({
+        message: 'Sitemap re-checked',
+        description:
+          data.queued > 0
+            ? `${data.found} URLs scanned · ${data.queued} new/updated page(s) queued for render.`
+            : `${data.found} URLs scanned · nothing changed since last render.`,
+      })
+      await loadUrls()
+    } finally {
+      setChecking(false)
     }
   }
 
@@ -240,6 +276,19 @@ export default function SitemapsPage() {
                 {chip('Queued', counts.pending, 'default')}
                 {chip('Failed', counts.failed, 'red')}
               </Space>
+            </div>
+
+            {/* ── Auto re-check interval ─────────────────────────────────────── */}
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <SyncOutlined style={{ color: BRAND }} />
+              <Text type="secondary">Auto re-check sitemap every</Text>
+              <InputNumber min={1} max={90} value={recheckDays} onChange={(v) => setRecheckDays(v ?? 5)} style={{ width: 70 }} />
+              <Text type="secondary">days — only pages with a newer date get re-rendered (saves renders).</Text>
+              <Tooltip title="Re-crawl the sitemap now: queues only new pages and ones whose sitemap date is newer than the cached copy.">
+                <Button size="small" icon={<ReloadOutlined />} loading={checking} onClick={recheckNow} disabled={!siteId}>
+                  Save &amp; check now
+                </Button>
+              </Tooltip>
             </div>
           </Card>
 
