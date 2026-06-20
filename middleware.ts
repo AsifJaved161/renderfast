@@ -56,29 +56,39 @@ export async function middleware(request: NextRequest) {
     },
   })
 
-  // getUser() verifies the JWT signature with Supabase (spoof-proof).
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  // Inject the verified id for dashboard API routes.
-  if (user && isInjectableApi(pathname)) {
-    requestHeaders.set('x-user-id', user.id)
-  }
-
   function finalize(res: NextResponse): NextResponse {
     cookiesToApply.forEach(({ name, value, options }) => res.cookies.set(name, value, options))
     return res
   }
 
-  // ── Page gating / redirects ──────────────────────────────────────────────────
-  if (pathname.startsWith('/dashboard') && !user)
+  // ── API routes: inject a VERIFIED user id ────────────────────────────────────
+  // getUser() validates the JWT signature with Supabase (spoof-proof) — required
+  // because the route handlers trust x-user-id for data access.
+  if (isInjectableApi(pathname)) {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (user) requestHeaders.set('x-user-id', user.id)
+    return finalize(NextResponse.next({ request: { headers: requestHeaders } }))
+  }
+
+  // ── Page routes: gate with getSession() ──────────────────────────────────────
+  // getSession() reads the session from the cookie (no auth-server round-trip on
+  // the common valid-token path), so navigation is fast. This only decides which
+  // UI shell to show — every API call still verifies via getUser(), so a forged
+  // cookie can reveal no data.
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const signedIn = !!session?.user
+
+  if (pathname.startsWith('/dashboard') && !signedIn)
     return finalize(NextResponse.redirect(new URL('/login', request.url)))
 
-  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login') && !user)
+  if (pathname.startsWith('/admin') && !pathname.startsWith('/admin/login') && !signedIn)
     return finalize(NextResponse.redirect(new URL('/admin/login', request.url)))
 
-  if ((pathname === '/login' || pathname === '/signup') && user)
+  if ((pathname === '/login' || pathname === '/signup') && signedIn)
     return finalize(NextResponse.redirect(new URL('/dashboard', request.url)))
 
   return finalize(NextResponse.next({ request: { headers: requestHeaders } }))
