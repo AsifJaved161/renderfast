@@ -15,6 +15,7 @@ import {
   Skeleton,
   Typography,
   Space,
+  Tooltip,
   message,
 } from 'antd'
 import {
@@ -24,6 +25,7 @@ import {
   BugOutlined,
   CloseCircleOutlined,
   WarningOutlined,
+  ExportOutlined,
 } from '@ant-design/icons'
 import Link from 'next/link'
 import { useDashboard } from '@/lib/dashboard-context'
@@ -290,6 +292,30 @@ export default function BotVisibilityPage() {
   const aiScore = data?.aiCitationScore ?? null
   const aiPages = data?.aiPages ?? []
 
+  // Section anchors — clicking a top graph smooth-scrolls to its detail section.
+  const issuesRef = useRef<HTMLDivElement>(null)
+  const aiRef = useRef<HTMLDivElement>(null)
+  const jumpTo = (ref: React.RefObject<HTMLDivElement | null>) =>
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+  // Arrow button that opens a URL in a new tab (without toggling the accordion).
+  const openBtn = (url: string) => (
+    <Tooltip title="Open in new tab">
+      <Button
+        type="text"
+        size="small"
+        icon={<ExportOutlined />}
+        onClick={(e) => {
+          e.stopPropagation()
+          window.open(url, '_blank', 'noopener,noreferrer')
+        }}
+      />
+    </Tooltip>
+  )
+
+  const tagColorForScore = (s: number | null) =>
+    s == null ? 'default' : s >= 70 ? 'green' : s >= 50 ? 'orange' : 'red'
+
   return (
     <div style={{ padding: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 20 }}>
@@ -336,67 +362,101 @@ export default function BotVisibilityPage() {
         </Card>
       ) : (
         <>
+        {/* ── All scores at the top — click any to jump to its section ──────── */}
         <Row gutter={[16, 16]}>
-          {/* ── SEO score ─────────────────────────────────────────────────── */}
+          {/* SEO Score → Issues */}
           <Col xs={24} md={8}>
-            <Card>
+            <Card hoverable onClick={() => jumpTo(issuesRef)} style={{ cursor: 'pointer' }}>
               <div style={{ textAlign: 'center' }}>
                 <Text type="secondary">SEO Score</Text>
                 <div style={{ marginTop: 16 }}>
                   {score == null ? (
-                    <div style={{ padding: '40px 0' }}>
-                      <Text type="secondary">
-                        No rendered pages analysed yet. Click <b>Re-scan</b> to render this domain’s
-                        URLs and analyse them.
-                      </Text>
+                    <div style={{ padding: '36px 0' }}>
+                      <Text type="secondary">Re-scan to analyse this domain.</Text>
                     </div>
                   ) : (
                     <Progress
                       type="circle"
                       percent={score}
-                      size={180}
+                      size={160}
                       strokeColor={scoreColor(score)}
                       format={(p) => <span style={{ color: scoreColor(score), fontWeight: 700 }}>{p}</span>}
                     />
                   )}
                 </div>
                 {score != null && (
-                  <div style={{ marginTop: 16 }}>
-                    <Tag color={score >= 70 ? 'green' : score >= 50 ? 'orange' : 'red'}>
+                  <div style={{ marginTop: 14 }}>
+                    <Tag color={tagColorForScore(score)}>
                       {score >= 70 ? 'Good' : score >= 50 ? 'Needs Work' : 'Poor'}
                     </Tag>
+                  </div>
+                )}
+                <div style={{ marginTop: 8 }}>
+                  <Text style={{ fontSize: 12, color: BRAND }}>View issues ↓</Text>
+                </div>
+              </div>
+            </Card>
+          </Col>
+
+          {/* Page Health donut → Issues */}
+          <Col xs={24} md={8}>
+            <Card hoverable onClick={() => jumpTo(issuesRef)} style={{ cursor: 'pointer' }}>
+              <div style={{ textAlign: 'center' }}>
+                <Text type="secondary">Page Health</Text>
+                {score == null ? (
+                  <div style={{ padding: '36px 0' }}>
+                    <Text type="secondary">Re-scan to see the breakdown.</Text>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                    <DonutChart size={150} centerLabel={String(data?.urlsChecked ?? 0)} centerSub="pages" data={healthSlices} />
+                    <Legend data={healthSlices} />
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      <b style={{ color: BRAND }}>{data?.healthy ?? 0}</b> of {data?.urlsChecked ?? 0} fully healthy
+                    </Text>
                   </div>
                 )}
               </div>
             </Card>
           </Col>
 
-          {/* ── Page health breakdown (shows the good pages too, not only problems) ── */}
-          <Col xs={24} md={16}>
-            <Card title="Page Health" styles={{ body: { minHeight: 230 } }}>
-              {score == null ? (
-                <Empty description="Re-scan to see the page-health breakdown." />
-              ) : (
-                <Row align="middle" gutter={[16, 16]}>
-                  <Col xs={24} sm={10} style={{ display: 'flex', justifyContent: 'center' }}>
-                    <DonutChart size={180} centerLabel={String(data?.urlsChecked ?? 0)} centerSub="pages" data={healthSlices} />
-                  </Col>
-                  <Col xs={24} sm={14}>
-                    <Legend data={healthSlices} />
-                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #f0f0f0' }}>
-                      <Text type="secondary" style={{ fontSize: 13 }}>
-                        Analysed <b>{data?.urlsChecked ?? 0}</b> of {data?.totalRendered ?? 0} rendered pages ·{' '}
-                        <b style={{ color: BRAND }}>{data?.healthy ?? 0}</b> fully healthy
-                      </Text>
+          {/* AI Citation Score → AI section */}
+          <Col xs={24} md={8}>
+            <Card hoverable onClick={() => jumpTo(aiRef)} style={{ cursor: 'pointer' }}>
+              <div style={{ textAlign: 'center' }}>
+                <Text type="secondary">AI Citation Score</Text>
+                <div style={{ marginTop: 16 }}>
+                  {aiScore == null ? (
+                    <div style={{ padding: '36px 0' }}>
+                      <Text type="secondary">Re-scan to compute readiness.</Text>
                     </div>
-                  </Col>
-                </Row>
-              )}
+                  ) : (
+                    <Progress
+                      type="circle"
+                      percent={aiScore}
+                      size={160}
+                      strokeColor={scoreColor(aiScore)}
+                      format={(p) => <span style={{ color: scoreColor(aiScore), fontWeight: 700 }}>{p}</span>}
+                    />
+                  )}
+                </div>
+                {aiScore != null && (
+                  <div style={{ marginTop: 14 }}>
+                    <Tag color={tagColorForScore(aiScore)}>
+                      {aiScore >= 70 ? 'Good' : aiScore >= 50 ? 'Needs Work' : 'Poor'}
+                    </Tag>
+                  </div>
+                )}
+                <div style={{ marginTop: 8 }}>
+                  <Text style={{ fontSize: 12, color: BRAND }}>View recommendations ↓</Text>
+                </div>
+              </div>
             </Card>
           </Col>
         </Row>
 
         {/* ── Issues ────────────────────────────────────────────────────────── */}
+        <div ref={issuesRef}>
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
           <Col xs={24}>
             <Card title={`Issues Found${issues.length ? ` (${issues.length})` : ''}`}>
@@ -421,9 +481,8 @@ export default function BotVisibilityPage() {
                             <Text strong style={{ wordBreak: 'break-all' }}>
                               {u.url}
                             </Text>
-                            <Tag color={scoreColor(u.score) === BRAND ? 'green' : scoreColor(u.score) === '#faad14' ? 'orange' : 'red'}>
-                              {u.score}/100
-                            </Tag>
+                            <Tag color={tagColorForScore(u.score)}>{u.score}/100</Tag>
+                            {openBtn(u.url)}
                           </Space>
                           <Space size={[4, 4]} wrap>
                             {derived.map((d) => (
@@ -509,8 +568,10 @@ export default function BotVisibilityPage() {
             </Card>
           </Col>
         </Row>
+        </div>
 
         {/* ── AI Citation Readiness ──────────────────────────────────────────── */}
+        <div ref={aiRef}>
         <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
           <Col xs={24}>
             <Card>
@@ -521,75 +582,57 @@ export default function BotVisibilityPage() {
                 Based on Princeton University research — pages with these signals get cited up to 41% more in AI answers.
               </Text>
 
-              <Row gutter={[16, 16]} align="middle" style={{ marginTop: 16 }}>
-                {/* score gauge — same Progress circle as the SEO Score */}
-                <Col xs={24} md={8}>
-                  <div style={{ textAlign: 'center' }}>
-                    {aiScore == null ? (
-                      <div style={{ padding: '40px 0' }}>
-                        <Text type="secondary">Re-scan to compute AI citation readiness.</Text>
-                      </div>
-                    ) : (
-                      <>
-                        <Progress
-                          type="circle"
-                          percent={aiScore}
-                          size={180}
-                          strokeColor={scoreColor(aiScore)}
-                          format={(p) => <span style={{ color: scoreColor(aiScore), fontWeight: 700 }}>{p}</span>}
-                        />
-                        <div style={{ marginTop: 16 }}>
-                          <Tag color={aiScore >= 70 ? 'green' : aiScore >= 50 ? 'orange' : 'red'}>
-                            {aiScore >= 70 ? 'Good' : aiScore >= 50 ? 'Needs Work' : 'Poor'}
+              <div style={{ marginTop: 16 }}>
+                {aiPages.length === 0 ? (
+                  <Empty
+                    description={
+                      aiScore == null
+                        ? 'Run a scan to analyse AI citation readiness.'
+                        : 'All analysed pages are AI-citation ready. 🎉'
+                    }
+                  />
+                ) : (
+                  <Collapse
+                    accordion
+                    items={aiPages.map((p) => ({
+                      key: p.url,
+                      label: (
+                        <Space size={4} wrap>
+                          <Text strong style={{ wordBreak: 'break-all' }}>
+                            {p.url}
+                          </Text>
+                          <Tag color={tagColorForScore(p.aiCitationScore)}>
+                            {p.aiCitationScore ?? '—'}/100
                           </Tag>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </Col>
-
-                {/* per-page recommendations — same Collapse accordion as Issues */}
-                <Col xs={24} md={16}>
-                  {aiPages.length === 0 ? (
-                    <Empty
-                      description={
-                        aiScore == null
-                          ? 'Run a scan to analyse AI citation readiness.'
-                          : 'All analysed pages are AI-citation ready. 🎉'
-                      }
-                    />
-                  ) : (
-                    <Collapse
-                      accordion
-                      items={aiPages.map((p) => ({
-                        key: p.url,
-                        label: (
-                          <Space size={4} wrap>
-                            <Text strong style={{ wordBreak: 'break-all' }}>
-                              {p.url}
-                            </Text>
-                            <Tag
-                              color={
-                                p.aiCitationScore == null
-                                  ? 'default'
-                                  : p.aiCitationScore >= 70
-                                    ? 'green'
-                                    : p.aiCitationScore >= 50
-                                      ? 'orange'
-                                      : 'red'
-                              }
-                            >
-                              {p.aiCitationScore ?? '—'}/100
-                            </Tag>
-                          </Space>
-                        ),
-                        children: (
-                          <div>
-                            {p.recommendations.map((rec) => (
-                              <div key={rec.issue} style={{ marginBottom: 14 }}>
+                          {openBtn(p.url)}
+                        </Space>
+                      ),
+                      // Numbered, clearly-laid-out recommendations.
+                      children: (
+                        <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+                          {p.recommendations.map((rec, i) => (
+                            <li key={rec.issue} style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+                              <span
+                                style={{
+                                  flexShrink: 0,
+                                  width: 26,
+                                  height: 26,
+                                  borderRadius: '50%',
+                                  background: BRAND,
+                                  color: '#fff',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: 13,
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {i + 1}
+                              </span>
+                              <div>
                                 {/* message — escaped plain text (React children) */}
-                                <Text>{rec.message}</Text>
-                                <div style={{ marginTop: 4 }}>
+                                <Text strong>{rec.message}</Text>
+                                <div style={{ marginTop: 6 }}>
                                   {/* impact — small highlighted pill */}
                                   <Tag color="green" style={{ fontWeight: 600 }}>
                                     {rec.impact}
@@ -600,17 +643,18 @@ export default function BotVisibilityPage() {
                                   Source: {rec.source}
                                 </Text>
                               </div>
-                            ))}
-                          </div>
-                        ),
-                      }))}
-                    />
-                  )}
-                </Col>
-              </Row>
+                            </li>
+                          ))}
+                        </ol>
+                      ),
+                    }))}
+                  />
+                )}
+              </div>
             </Card>
           </Col>
         </Row>
+        </div>
         </>
       )}
     </div>
