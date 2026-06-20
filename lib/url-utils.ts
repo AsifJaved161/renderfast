@@ -34,8 +34,9 @@ export function normalizeUrl(input: string): string {
   }
 }
 
-// Path segments that are never SEO content worth pre-rendering.
-const SKIP_PATH = /\/(wp-admin|wp-json|wp-login|xmlrpc\.php|cgi-bin|feed|comments\/feed|cart|checkout|my-account|wishlist)(\/|$|\.)/i
+// Path segments that are never SEO content worth pre-rendering (incl. all
+// WordPress assets: /wp-content/ images/css/js, /wp-includes/).
+const SKIP_PATH = /\/(wp-admin|wp-json|wp-login|wp-content|wp-includes|xmlrpc\.php|cgi-bin|feed|comments\/feed|cart|checkout|my-account|wishlist)(\/|$|\.)/i
 const SKIP_API = /^\/api(\/|$)/i
 // Non-HTML resources / config & source files that must never be in SEO diagnostics.
 const SKIP_EXT = /\.(env|json|xml|txt|js|mjs|cjs|css|map|ico|png|jpe?g|gif|svg|webp|avif|woff2?|ttf|eot|pdf|zip|gz|rar|lock|ya?ml|toml|ini|sh|bash|py|rb|php|sql|md|log|bak|old|example|sample|dist|conf|cfg)$/i
@@ -46,10 +47,13 @@ export function isRenderableUrl(input: string): boolean {
   try {
     const u = new URL(input)
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return false
-    if (SKIP_API.test(u.pathname)) return false
-    if (SKIP_PATH.test(u.pathname)) return false
-    if (SKIP_EXT.test(u.pathname)) return false // .env, .json, .xml, scripts, images…
-    const lastSeg = u.pathname.split('/').pop() ?? ''
+    // An encoded "?" (%3F) can hide a query inside the path (e.g. image.jpg%3Fver=1)
+    // — ignore everything after it so the extension/dotfile checks still match.
+    const path = u.pathname.split(/%3f/i)[0]
+    if (SKIP_API.test(path)) return false
+    if (SKIP_PATH.test(path)) return false
+    if (SKIP_EXT.test(path)) return false // .env, .json, .xml, scripts, images…
+    const lastSeg = path.split('/').pop() ?? ''
     if (lastSeg.startsWith('.')) return false // dotfiles: /.env, /.env.example, /.git/…
     for (const key of SKIP_QUERY) if (u.searchParams.has(key)) return false
     return true

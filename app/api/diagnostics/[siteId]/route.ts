@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { isRenderConfigured } from '@/lib/renderer'
 import { processDiagnosticsJob, isUrlOnDomain, reclaimIfStale } from '@/lib/diagnostics-worker'
 import { getOpsConfig } from '@/lib/app-config'
-import { isRenderableUrl } from '@/lib/url-utils'
+import { isRenderableUrl, normalizeUrl } from '@/lib/url-utils'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -74,13 +74,16 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ siteId: str
       .order('rendered_at', { ascending: false })
       .limit(SCAN_LIMIT)
 
-    // Only keep real, content-worthy pages: drop junk URLs (search, /api, .env,
-    // tracking-param dupes…) and stub rows from before rendering was configured.
-    const all = ((rows ?? []) as DiagRow[]).filter(
-      (r) =>
-        isRenderableUrl(r.url) &&
-        !(r.render_time_ms != null && r.render_time_ms < MIN_REAL_RENDER_MS)
-    )
+    // Normalize (strip tracking params like ?noamp / ?utm) then keep only real,
+    // content-worthy pages: drop junk URLs (search, /api, wp-content assets,
+    // images, .env…) and stub rows from before rendering was configured.
+    const all = ((rows ?? []) as DiagRow[])
+      .map((r) => ({ ...r, url: normalizeUrl(r.url) }))
+      .filter(
+        (r) =>
+          isRenderableUrl(r.url) &&
+          !(r.render_time_ms != null && r.render_time_ms < MIN_REAL_RENDER_MS)
+      )
 
     // Keep only the most-recent diagnostic per URL (rows already sorted desc).
     const latestByUrl = new Map<string, DiagRow>()

@@ -18,8 +18,10 @@ function userId(req: NextRequest) {
 // rendered before URL-filtering existed are hidden here and expire on their own.
 const JUNK_PATTERNS = [
   '%?s=%', '%&s=%', '%/api/%', '%/wp-admin/%', '%/wp-json/%', '%/wp-login%',
-  '%xmlrpc.php%', '%/feed%', '%/cart%', '%/checkout%', '%/my-account%',
-  '%?add-to-cart=%', '%?replytocom=%', '%.env%', '%.json', '%.xml',
+  '%/wp-content/%', '%/wp-includes/%', '%xmlrpc.php%', '%/feed%', '%/cart%',
+  '%/checkout%', '%/my-account%', '%?add-to-cart=%', '%?replytocom=%',
+  '%.env%', '%.json', '%.xml', '%.jpg%', '%.jpeg%', '%.png%', '%.gif%',
+  '%.svg%', '%.webp%', '%.ico%',
 ]
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function excludeJunk<T extends { not: (...a: any[]) => T }>(q: T): T {
