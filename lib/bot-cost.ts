@@ -137,3 +137,161 @@ export async function setRate(
 
   return { changed: true, rate: Number(newRate) }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cost summary — the numbers actually shown in the UI.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface DateRange {
+  from: string // inclusive, YYYY-MM-DD
+  to: string // inclusive, YYYY-MM-DD
+}
+
+export interface BotCostSummary {
+  siteId: string
+  range: DateRange
+  perBot: { botName: string; requests: number; gb: number; estimatedCostUsd: number }[]
+  totals: { requests: number; gb: number; estimatedCostUsd: number }
+  // One point per day with traffic — ready for charting.
+  timeSeries: { date: string; gb: number; estimatedCostUsd: number }[]
+  // Every rate that actually applied to a day in this range (for an accurate
+  // disclaimer even when the rate changed mid-range).
+  ratesUsed: { ratePerGbUsd: number; effectiveFrom: string; effectiveTo: string | null }[]
+  rateSource: string // methodology label from platform_settings
+  isEstimate: true // these are estimates, never billed amounts
+}
+
+const GB = 1_000_000_000
+const round = (n: number, dp = 4) => Math.round(n * 10 ** dp) / 10 ** dp
+
+interface RawHistory {
+  id: string
+  rate_per_gb_usd: number
+  effective_from: string
+  effective_to: string | null
+}
+
+// In-memory rate lookup for a single day. Half-open match:
+//   effective_from <= date  AND  (effective_to is null OR date < effective_to)
+// Dates are zero-padded YYYY-MM-DD strings, so lexical compare == chronological.
+// Returns the matching history row (so the caller can record WHICH rate was used)
+// or null when no row covers the day (e.g. a day before any rate existed).
+function rateRowForDate(history: RawHistory[], date: string): RawHistory | null {
+  for (const r of history) {
+    if (r.effective_from <= date && (r.effective_to == null || date < r.effective_to)) return r
+  }
+  return null
+}
+
+// getBotCostSummary — sum traffic per bot + per day, costing EACH day with the
+// rate that was effective ON THAT DAY (never a single current rate smeared
+// across a range that spans a rate change).
+//
+// Server-side / admin-internal: uses the service-role client. A client-facing
+// route exposing this MUST sit behind requireAdmin() (or scope the figure as a
+// read-only estimate per the product decision).
+export async function getBotCostSummary(siteId: string, dateRange: DateRange): Promise<BotCostSummary> {
+  const { from, to } = dateRange
+
+  // 1) Daily traffic rows for the site in range (already one row per bot+day).
+  const { data: trafficRows } = await supabaseAdmin
+    .from('bot_traffic_stats')
+    .select('bot_name, date, request_count, bytes_served')
+    .eq('site_id', siteId)
+    .gte('date', from)
+    .lte('date', to)
+
+  // 2) Rate history overlapping the range, fetched ONCE. Overlap test:
+  //    a row applies if it starts on/before `to` and ends after `from`
+  //    (open-ended rows — effective_to null — always pass the end test).
+  const { data: histRows } = await supabaseAdmin
+    .from('bot_cost_rate_history')
+    .select('id, rate_per_gb_usd, effective_from, effective_to')
+    .lte('effective_from', to)
+    .or(`effective_to.is.null,effective_to.gt.${from}`)
+    .order('effective_from', { ascending: false }) // newest first → first lexical match wins
+
+  const history: RawHistory[] = (histRows ?? []).map((r) => ({
+    id: r.id,
+    rate_per_gb_usd: Number(r.rate_per_gb_usd),
+    effective_from: r.effective_from,
+    effective_to: r.effective_to,
+  }))
+
+  // Source/methodology label (shown in the disclaimer) lives on the current
+  // platform_settings snapshot — it's a description of method, not a per-rate
+  // value, so the same label applies regardless of which numeric rate was used.
+  const current = await getCurrentEstimate()
+
+  // ── Aggregate ────────────────────────────────────────────────────────────────
+  // Cost is computed at the DAY granularity (the finest the data has) so each
+  // day uses its own effective rate; per-bot and time-series totals are just
+  // sums of those per-day costs — guaranteeing they reconcile to the grand total.
+  const perBot = new Map<string, { requests: number; bytes: number; cost: number }>()
+  const perDay = new Map<string, { bytes: number; cost: number }>()
+  const usedRateIds = new Set<string>()
+  let totalRequests = 0
+  let totalBytes = 0
+  let totalCost = 0
+
+  for (const row of trafficRows ?? []) {
+    const date: string = row.date
+    const requests = Number(row.request_count) || 0
+    const bytes = Number(row.bytes_served) || 0
+
+    // Rate effective ON THIS DAY — fall back to the seed rate if (and only if)
+    // no history row covers the day, so a figure is still shown.
+    const rateRow = rateRowForDate(history, date)
+    const rate = rateRow ? rateRow.rate_per_gb_usd : FALLBACK_RATE
+    if (rateRow) usedRateIds.add(rateRow.id)
+
+    const cost = (bytes / GB) * rate
+
+    const bot = perBot.get(row.bot_name) ?? { requests: 0, bytes: 0, cost: 0 }
+    bot.requests += requests
+    bot.bytes += bytes
+    bot.cost += cost
+    perBot.set(row.bot_name, bot)
+
+    const day = perDay.get(date) ?? { bytes: 0, cost: 0 }
+    day.bytes += bytes
+    day.cost += cost
+    perDay.set(date, day)
+
+    totalRequests += requests
+    totalBytes += bytes
+    totalCost += cost
+  }
+
+  // ── Shape the response ───────────────────────────────────────────────────────
+  const perBotArr = Array.from(perBot.entries())
+    .map(([botName, v]) => ({
+      botName,
+      requests: v.requests,
+      gb: round(v.bytes / GB),
+      estimatedCostUsd: round(v.cost),
+    }))
+    .sort((a, b) => b.estimatedCostUsd - a.estimatedCostUsd)
+
+  const timeSeries = Array.from(perDay.entries())
+    .map(([date, v]) => ({ date, gb: round(v.bytes / GB), estimatedCostUsd: round(v.cost) }))
+    .sort((a, b) => a.date.localeCompare(b.date))
+
+  // Only the rates that actually applied to a costed day (handles a mid-range
+  // change → two entries; the frontend can render an accurate multi-rate note).
+  const ratesUsed = history
+    .filter((r) => usedRateIds.has(r.id))
+    .map((r) => ({ ratePerGbUsd: r.rate_per_gb_usd, effectiveFrom: r.effective_from, effectiveTo: r.effective_to }))
+    .sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom))
+
+  return {
+    siteId,
+    range: { from, to },
+    perBot: perBotArr,
+    totals: { requests: totalRequests, gb: round(totalBytes / GB), estimatedCostUsd: round(totalCost) },
+    timeSeries,
+    ratesUsed,
+    rateSource: current.rate_source,
+    isEstimate: true,
+  }
+}
