@@ -27,6 +27,7 @@ import {
   FieldTimeOutlined,
 } from '@ant-design/icons'
 import { StatTitle } from '@/components/ui/StatTitle'
+import { useDashboard } from '@/lib/dashboard-context'
 
 const BRAND = '#2da01d'
 const { Title, Paragraph } = Typography
@@ -50,23 +51,16 @@ function statusColor(code: number | null) {
 
 export default function CachePage() {
   const [loading, setLoading] = useState(true)
+  const { sites } = useDashboard() // shared from the layout — no extra /api/sites call
   const [rows, setRows] = useState<CacheEntry[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
-  const [sites, setSites] = useState<{ id: string; domain: string }[]>([])
   const [siteId, setSiteId] = useState<string | undefined>()
   const [selected, setSelected] = useState<React.Key[]>([])
   const [busy, setBusy] = useState(false)
   const [viewHtml, setViewHtml] = useState<{ url: string; html: string } | null>(null)
   const [summary, setSummary] = useState({ total: 0, totalSizeBytes: 0, avgTtlHours: 0, hitRate: 0 })
   const LIMIT = 20
-
-  useEffect(() => {
-    fetch('/api/sites')
-      .then((r) => r.json())
-      .then((d) => setSites(d.sites ?? []))
-      .catch(() => setSites([]))
-  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)

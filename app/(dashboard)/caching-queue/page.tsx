@@ -28,6 +28,7 @@ import {
   ExportOutlined,
 } from '@ant-design/icons'
 import { StatTitle } from '@/components/ui/StatTitle'
+import { useDashboard } from '@/lib/dashboard-context'
 
 const BRAND = '#2da01d'
 const { Title } = Typography
@@ -58,7 +59,7 @@ export default function CachingQueuePage() {
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [summary, setSummary] = useState({ pending: 0, rendering: 0, completed: 0, failed: 0 })
-  const [sites, setSites] = useState<{ id: string; domain: string }[]>([])
+  const { sites } = useDashboard() // shared from the layout — no extra /api/sites call
   const [siteId, setSiteId] = useState<string | undefined>()
   const [statusFilter, setStatusFilter] = useState<Status | undefined>()
   const [addOpen, setAddOpen] = useState(false)
@@ -70,13 +71,6 @@ export default function CachingQueuePage() {
   const LIMIT = 20
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  useEffect(() => {
-    fetch('/api/sites')
-      .then((r) => r.json())
-      .then((d) => setSites(d.sites ?? []))
-      .catch(() => setSites([]))
-  }, [])
 
   const load = useCallback(async () => {
     try {

@@ -195,6 +195,12 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
     }
   }, [])
 
+  // Warm the router cache for every sidebar route so clicking opens instantly
+  // (the sidebar navigates with router.push, which otherwise doesn't prefetch).
+  useEffect(() => {
+    for (const group of NAV) for (const item of group.items) router.prefetch(item.key)
+  }, [router])
+
   const toggleTheme = useCallback(() => {
     setMode((m) => {
       const next: ThemeMode = m === 'dark' ? 'light' : 'dark'

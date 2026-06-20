@@ -26,6 +26,7 @@ import {
 import type { Dayjs } from 'dayjs'
 import { DonutChart, Legend, BarChart, MetricTilesChart } from '@/components/charts/Charts'
 import { StatTitle } from '@/components/ui/StatTitle'
+import { useDashboard } from '@/lib/dashboard-context'
 
 const BRAND = '#2da01d'
 const { Title } = Typography
@@ -65,19 +66,12 @@ const EMPTY: Analytics = {
 }
 
 export default function CdnAnalyticsPage() {
+  const { sites } = useDashboard() // shared from the layout — no extra /api/sites call
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<Analytics>(EMPTY)
-  const [sites, setSites] = useState<{ id: string; domain: string }[]>([])
   const [siteId, setSiteId] = useState<string | undefined>()
   const [botType, setBotType] = useState<string | undefined>()
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null)
-
-  useEffect(() => {
-    fetch('/api/sites')
-      .then((r) => r.json())
-      .then((d) => setSites(d.sites ?? []))
-      .catch(() => setSites([]))
-  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)

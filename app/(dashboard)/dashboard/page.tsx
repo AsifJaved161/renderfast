@@ -28,6 +28,7 @@ import {
 import type { Dayjs } from 'dayjs'
 import { DonutChart, Legend, BarChart, MetricTilesChart } from '@/components/charts/Charts'
 import { StatTitle } from '@/components/ui/StatTitle'
+import { useDashboard } from '@/lib/dashboard-context'
 
 const BRAND = '#2da01d'
 const { Title, Text } = Typography
@@ -77,26 +78,14 @@ const EMPTY: Analytics = {
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState<Analytics | null>(null)
-  const [sites, setSites] = useState<{ id: string; domain: string }[]>([])
+  const { sites, user } = useDashboard() // shared from the layout — no extra calls
   const [siteId, setSiteId] = useState<string | undefined>()
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null)
-  const [plan, setPlan] = useState<string>('free')
+  const plan: string = user?.plan ?? 'free'
   // Locale/timezone date formatting only runs after mount so the server-rendered
   // HTML and the client's first render stay identical (no hydration mismatch).
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
-
-  // Load site list + current plan once.
-  useEffect(() => {
-    fetch('/api/sites')
-      .then((r) => r.json())
-      .then((d) => setSites(d.sites ?? []))
-      .catch(() => setSites([]))
-    fetch('/api/auth/me')
-      .then((r) => r.json())
-      .then((d) => d.user?.plan && setPlan(d.user.plan))
-      .catch(() => {})
-  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)

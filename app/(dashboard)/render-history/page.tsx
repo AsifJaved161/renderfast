@@ -19,6 +19,7 @@ import {
 } from 'antd'
 import { DownloadOutlined, CodeOutlined } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
+import { useDashboard } from '@/lib/dashboard-context'
 
 const BRAND = '#2da01d'
 const { Title, Paragraph } = Typography
@@ -60,21 +61,14 @@ const botTypeColor: Record<string, string> = {
 }
 
 export default function RenderHistoryPage() {
+  const { sites } = useDashboard() // shared from the layout — no extra /api/sites call
   const [loading, setLoading] = useState(true)
   const [rows, setRows] = useState<HistoryRow[]>([])
-  const [sites, setSites] = useState<{ id: string; domain: string }[]>([])
   const [siteId, setSiteId] = useState<string | undefined>()
   const [botType, setBotType] = useState<string | undefined>()
   const [cache, setCache] = useState<'all' | 'hit' | 'miss'>('all')
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null)
   const [previewHtml, setPreviewHtml] = useState<{ url: string; html: string } | null>(null)
-
-  useEffect(() => {
-    fetch('/api/sites')
-      .then((r) => r.json())
-      .then((d) => setSites(d.sites ?? []))
-      .catch(() => setSites([]))
-  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
