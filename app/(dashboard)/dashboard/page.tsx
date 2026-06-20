@@ -28,6 +28,7 @@ import {
 import type { Dayjs } from 'dayjs'
 import { DonutChart, Legend, BarChart, MetricTilesChart } from '@/components/charts/Charts'
 import { StatTitle } from '@/components/ui/StatTitle'
+import { BotCostWidget } from '@/components/dashboard/BotCostWidget'
 import { useDashboard } from '@/lib/dashboard-context'
 
 const BRAND = '#2da01d'
@@ -112,6 +113,8 @@ export default function DashboardPage() {
 
   const d = data ?? EMPTY
   const hasActivity = d.summary.totalRenders > 0 || d.summary.totalBotRequests > 0
+  // The cost widget is per-site; fall back to the first site when "All sites".
+  const costSiteId = siteId ?? sites[0]?.id
 
   return (
     <div style={{ padding: 24 }}>
@@ -228,6 +231,11 @@ export default function DashboardPage() {
           tooltip="Number of distinct pages crawled by bots on your domains."
         />
       </Row>
+
+      {/* ── Bot cost glance (links to full Bot Cost Insights) ───────────────── */}
+      <div style={{ marginBottom: 20 }}>
+        <BotCostWidget siteId={costSiteId} />
+      </div>
 
       {/* ── Charts row ──────────────────────────────────────────────────────── */}
       <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
