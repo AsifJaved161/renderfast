@@ -126,7 +126,8 @@ export async function GET(req: NextRequest) {
     // this is the "benefit" number shown to users, typically tens of ms.
     const serveMs = Date.now() - reqStart
     logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, true, serveMs, 200)
-    revalidateIfChanged(domain, renderUrl, cached)
+    // after() keeps this alive past the response so it can't be killed mid-flight.
+    after(() => revalidateChanged(domain, renderUrl, cached))
     return serve(cached, wantsMarkdown, 'HIT', 200)
   }
 
@@ -144,30 +145,34 @@ export async function GET(req: NextRequest) {
   // ── Background (non-blocking): ONE origin fetch feeds both diagnostics and
   //    the change-detection validators (no duplicate request). ─────────────────
   after(async () => {
-    let rawHtml: string | null = null
-    let etag: string | null = null
-    let lastModified: string | null = null
     try {
-      const res = await fetch(renderUrl, {
-        headers: { 'User-Agent': 'RenderFastBot/1.0 (+https://renderfast.vercel.app)', Accept: 'text/html' },
-        signal: AbortSignal.timeout(12_000),
-      })
-      if (res.ok) {
-        rawHtml = await res.text()
-        etag = res.headers.get('etag')
-        lastModified = res.headers.get('last-modified')
+      let rawHtml: string | null = null
+      let etag: string | null = null
+      let lastModified: string | null = null
+      try {
+        const res = await fetch(renderUrl, {
+          headers: { 'User-Agent': 'RenderFastBot/1.0 (+https://renderfast.vercel.app)', Accept: 'text/html' },
+          signal: AbortSignal.timeout(12_000),
+        })
+        if (res.ok) {
+          rawHtml = await res.text()
+          etag = res.headers.get('etag')
+          lastModified = res.headers.get('last-modified')
+        }
+      } catch {
+        /* origin unreachable — diagnostics fall back, validators skipped */
+      }
+
+      captureDiagnostics({ siteId: owner.siteId, url: renderUrl, renderedHtml: html, renderTimeMs, rawHtml })
+      if (rawHtml != null) {
+        await supabaseAdmin
+          .from('cache_entries')
+          .update({ etag, last_modified: lastModified, content_hash: fingerprint(rawHtml) })
+          .eq('url', renderUrl)
+          .eq('user_id', owner.userId)
       }
     } catch {
-      /* origin unreachable — diagnostics fall back, validators skipped */
-    }
-
-    captureDiagnostics({ siteId: owner.siteId, url: renderUrl, renderedHtml: html, renderTimeMs, rawHtml })
-    if (rawHtml != null) {
-      await supabaseAdmin
-        .from('cache_entries')
-        .update({ etag, last_modified: lastModified, content_hash: fingerprint(rawHtml) })
-        .eq('url', renderUrl)
-        .eq('user_id', owner.userId)
+      // background work must never throw (e.g. validator columns missing pre-migration)
     }
   })
 
@@ -272,53 +277,51 @@ function logRender(
 // origin (cheaply) whether the page CHANGED. Only re-render if it did — an
 // unchanged page just gets its cache window + KV lifetime refreshed, saving the
 // expensive render entirely. Never blocks the served response.
-function revalidateIfChanged(domain: string, url: string, cachedHtml: string) {
-  ;(async () => {
-    try {
-      const { data } = await supabaseAdmin
-        .from('cache_entries')
-        .select('expires_at, etag, last_modified, content_hash')
-        .eq('url', url)
-        .maybeSingle()
-      if (!data) return
-      // Not due for a check yet → nothing to do.
-      if (data.expires_at && new Date(data.expires_at) > new Date()) return
+async function revalidateChanged(domain: string, url: string, cachedHtml: string): Promise<void> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('cache_entries')
+      .select('expires_at, etag, last_modified, content_hash')
+      .eq('url', url)
+      .maybeSingle()
+    if (!data) return
+    // Not due for a check yet → nothing to do.
+    if (data.expires_at && new Date(data.expires_at) > new Date()) return
 
-      const { cacheTtlSeconds } = await getOpsConfig()
-      const nextWindow = new Date(Date.now() + cacheTtlSeconds * 1000).toISOString()
-      const changed = await originChanged(url, {
-        etag: data.etag,
-        last_modified: data.last_modified,
-        content_hash: data.content_hash,
-      })
+    const { cacheTtlSeconds } = await getOpsConfig()
+    const nextWindow = new Date(Date.now() + cacheTtlSeconds * 1000).toISOString()
+    const changed = await originChanged(url, {
+      etag: data.etag,
+      last_modified: data.last_modified,
+      content_hash: data.content_hash,
+    })
 
-      // Unchanged (or origin unreachable) → DON'T render. Refresh KV lifetime +
-      // the next check window, keep serving the existing cache.
-      if (changed === false || changed === null) {
-        await setCachedPage(domain, url, cachedHtml, HARD_TTL)
-        await supabaseAdmin.from('cache_entries').update({ expires_at: nextWindow }).eq('url', url)
-        return
-      }
-
-      // Content changed → re-render and refresh everything.
-      const { html, error, renderTimeMs, statusCode } = await renderPage(url)
-      if (!error && html) {
-        await setCachedPage(domain, url, html, HARD_TTL)
-        const v = await captureValidators(url)
-        await supabaseAdmin
-          .from('cache_entries')
-          .update({
-            cached_at: new Date().toISOString(),
-            expires_at: nextWindow,
-            html_size_bytes: Buffer.byteLength(html, 'utf8'),
-            render_time_ms: renderTimeMs,
-            status_code: statusCode,
-            ...(v ?? {}),
-          })
-          .eq('url', url)
-      }
-    } catch {
-      // never blocks the served response
+    // Unchanged (or origin unreachable) → DON'T render. Refresh KV lifetime +
+    // the next check window, keep serving the existing cache.
+    if (changed === false || changed === null) {
+      await setCachedPage(domain, url, cachedHtml, HARD_TTL)
+      await supabaseAdmin.from('cache_entries').update({ expires_at: nextWindow }).eq('url', url)
+      return
     }
-  })()
+
+    // Content changed → re-render and refresh everything.
+    const { html, error, renderTimeMs, statusCode } = await renderPage(url)
+    if (!error && html) {
+      await setCachedPage(domain, url, html, HARD_TTL)
+      const v = await captureValidators(url)
+      await supabaseAdmin
+        .from('cache_entries')
+        .update({
+          cached_at: new Date().toISOString(),
+          expires_at: nextWindow,
+          html_size_bytes: Buffer.byteLength(html, 'utf8'),
+          render_time_ms: renderTimeMs,
+          status_code: statusCode,
+          ...(v ?? {}),
+        })
+        .eq('url', url)
+    }
+  } catch {
+    // never blocks the served response
+  }
 }

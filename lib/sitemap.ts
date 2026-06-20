@@ -112,25 +112,46 @@ async function crawlSitemap(
   return { urls, sitemapUrl: usedSitemap ?? candidates[0] ?? `https://${domain}/sitemap.xml` }
 }
 
-// Insert URLs into the queue, skipping any already present for the site.
+// Queue URLs for rendering without creating duplicates: insert brand-new URLs,
+// reset already-finished (completed/failed) rows back to pending, and leave
+// rows that are still pending/rendering untouched.
 async function queueUrls(siteId: string, userId: string, urlList: string[]): Promise<number> {
   if (urlList.length === 0) return 0
-  const { data: existingRows } = await supabaseAdmin
-    .from('caching_queue')
-    .select('url')
-    .eq('site_id', siteId)
-    .in('status', ['pending', 'rendering'])
-    .limit(5000)
-  const have = new Set((existingRows ?? []).map((r: { url: string }) => r.url))
 
-  const toInsert = urlList
-    .filter((u) => !have.has(u))
-    .map((url) => ({ site_id: siteId, user_id: userId, url, status: 'pending' as const, priority: 5 }))
+  // Look up existing queue rows for exactly these URLs.
+  const existing = new Map<string, { id: string; status: string }>()
+  for (let i = 0; i < urlList.length; i += 200) {
+    const chunk = urlList.slice(i, i + 200)
+    const { data } = await supabaseAdmin
+      .from('caching_queue')
+      .select('id, url, status')
+      .eq('site_id', siteId)
+      .in('url', chunk)
+    for (const r of (data ?? []) as { id: string; url: string; status: string }[]) {
+      existing.set(r.url, { id: r.id, status: r.status })
+    }
+  }
+
+  const toInsert: { site_id: string; user_id: string; url: string; status: 'pending'; priority: number }[] = []
+  const toResetIds: string[] = []
+  for (const url of urlList) {
+    const e = existing.get(url)
+    if (!e) toInsert.push({ site_id: siteId, user_id: userId, url, status: 'pending', priority: 5 })
+    else if (e.status === 'completed' || e.status === 'failed') toResetIds.push(e.id)
+    // pending / rendering → already queued, leave it
+  }
 
   for (let i = 0; i < toInsert.length; i += 500) {
     await supabaseAdmin.from('caching_queue').insert(toInsert.slice(i, i + 500))
   }
-  return toInsert.length
+  for (let i = 0; i < toResetIds.length; i += 500) {
+    await supabaseAdmin
+      .from('caching_queue')
+      .update({ status: 'pending', error_message: null, completed_at: null, attempts: 0 })
+      .in('id', toResetIds.slice(i, i + 500))
+  }
+
+  return toInsert.length + toResetIds.length
 }
 
 // Discover a site's sitemap, record it, and queue ALL its page URLs (first time).
@@ -204,11 +225,12 @@ export async function recheckSitemap(
 
   const queued = await queueUrls(siteId, userId, toQueue)
 
+  // Mark the site's sitemap as just crawled (by site_id so it's always recorded,
+  // even if the discovered sitemap_url differs — prevents the cron re-looping it).
   await supabaseAdmin
     .from('sitemaps')
     .update({ last_crawled_at: new Date().toISOString(), urls_found: urls.size, status: 'active' })
     .eq('site_id', siteId)
-    .eq('sitemap_url', sitemapUrl)
 
   return { sitemapUrl, found: urls.size, queued }
 }
