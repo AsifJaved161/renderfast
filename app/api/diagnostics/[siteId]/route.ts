@@ -165,6 +165,20 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ siteId: str
     }
     const healthy = scored.length - urlsWithIssues.length // fully clean pages
 
+    // ── AI Citation Readiness ──────────────────────────────────────────────────
+    // Overall score (avg across pages that have one) + the pages with room to
+    // improve (any recommendations), worst-first for the accordion.
+    const aiScores = scored
+      .map((s) => s.aiCitationScore)
+      .filter((n): n is number => typeof n === 'number')
+    const aiCitationScore = aiScores.length
+      ? Math.round(aiScores.reduce((a, b) => a + b, 0) / aiScores.length)
+      : null
+    const aiPages = scored
+      .filter((s) => s.recommendations.length > 0)
+      .map((s) => ({ url: s.url, aiCitationScore: s.aiCitationScore, recommendations: s.recommendations }))
+      .sort((a, b) => (a.aiCitationScore ?? 0) - (b.aiCitationScore ?? 0))
+
     return NextResponse.json({
       domain: site.domain,
       healthScore,
@@ -174,6 +188,8 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ siteId: str
       healthy,
       urlsWithIssues,
       topErrors,
+      aiCitationScore,
+      aiPages,
     })
   } catch (e) {
     console.error('[DIAGNOSTICS_GET]:', e)

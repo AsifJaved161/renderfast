@@ -64,6 +64,20 @@ interface UrlIssue {
   renderedAt: string
 }
 
+interface Recommendation {
+  issue: string
+  message: string
+  impact: string
+  source: string
+  priority: number
+}
+
+interface AiPage {
+  url: string
+  aiCitationScore: number | null
+  recommendations: Recommendation[]
+}
+
 interface DiagSummary {
   domain: string
   healthScore: number | null
@@ -73,6 +87,8 @@ interface DiagSummary {
   healthy?: number
   urlsWithIssues: UrlIssue[]
   topErrors: { message: string; count: number }[]
+  aiCitationScore?: number | null
+  aiPages?: AiPage[]
   message?: string
 }
 
@@ -271,6 +287,8 @@ export default function BotVisibilityPage() {
     { label: 'Needs Work', value: dist.needsWork, color: '#faad14' },
     { label: 'Poor', value: dist.poor, color: '#ff4d4f' },
   ]
+  const aiScore = data?.aiCitationScore ?? null
+  const aiPages = data?.aiPages ?? []
 
   return (
     <div style={{ padding: 24 }}>
@@ -488,6 +506,108 @@ export default function BotVisibilityPage() {
                   })}
                 />
               )}
+            </Card>
+          </Col>
+        </Row>
+
+        {/* ── AI Citation Readiness ──────────────────────────────────────────── */}
+        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+          <Col xs={24}>
+            <Card>
+              <Title level={4} style={{ margin: 0 }}>
+                AI Citation Readiness
+              </Title>
+              <Text type="secondary">
+                Based on Princeton University research — pages with these signals get cited up to 41% more in AI answers.
+              </Text>
+
+              <Row gutter={[16, 16]} align="middle" style={{ marginTop: 16 }}>
+                {/* score gauge — same Progress circle as the SEO Score */}
+                <Col xs={24} md={8}>
+                  <div style={{ textAlign: 'center' }}>
+                    {aiScore == null ? (
+                      <div style={{ padding: '40px 0' }}>
+                        <Text type="secondary">Re-scan to compute AI citation readiness.</Text>
+                      </div>
+                    ) : (
+                      <>
+                        <Progress
+                          type="circle"
+                          percent={aiScore}
+                          size={180}
+                          strokeColor={scoreColor(aiScore)}
+                          format={(p) => <span style={{ color: scoreColor(aiScore), fontWeight: 700 }}>{p}</span>}
+                        />
+                        <div style={{ marginTop: 16 }}>
+                          <Tag color={aiScore >= 70 ? 'green' : aiScore >= 50 ? 'orange' : 'red'}>
+                            {aiScore >= 70 ? 'Good' : aiScore >= 50 ? 'Needs Work' : 'Poor'}
+                          </Tag>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </Col>
+
+                {/* per-page recommendations — same Collapse accordion as Issues */}
+                <Col xs={24} md={16}>
+                  {aiPages.length === 0 ? (
+                    <Empty
+                      description={
+                        aiScore == null
+                          ? 'Run a scan to analyse AI citation readiness.'
+                          : 'All analysed pages are AI-citation ready. 🎉'
+                      }
+                    />
+                  ) : (
+                    <Collapse
+                      accordion
+                      items={aiPages.map((p) => ({
+                        key: p.url,
+                        label: (
+                          <Space size={4} wrap>
+                            <Text strong style={{ wordBreak: 'break-all' }}>
+                              {p.url}
+                            </Text>
+                            <Tag
+                              color={
+                                p.aiCitationScore == null
+                                  ? 'default'
+                                  : p.aiCitationScore >= 70
+                                    ? 'green'
+                                    : p.aiCitationScore >= 50
+                                      ? 'orange'
+                                      : 'red'
+                              }
+                            >
+                              {p.aiCitationScore ?? '—'}/100
+                            </Tag>
+                          </Space>
+                        ),
+                        children: (
+                          <div>
+                            {p.recommendations.map((rec) => (
+                              <div key={rec.issue} style={{ marginBottom: 14 }}>
+                                {/* message — escaped plain text (React children) */}
+                                <Text>{rec.message}</Text>
+                                <div style={{ marginTop: 4 }}>
+                                  {/* impact — small highlighted pill */}
+                                  <Tag color="green" style={{ fontWeight: 600 }}>
+                                    {rec.impact}
+                                  </Tag>
+                                </div>
+                                {/* source — small grey caption */}
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  Source: {rec.source}
+                                </Text>
+                              </div>
+                            ))}
+                          </div>
+                        ),
+                      }))}
+                    />
+                  )}
+                </Col>
+              </Row>
             </Card>
           </Col>
         </Row>
