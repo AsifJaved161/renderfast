@@ -6,6 +6,7 @@ import { captureDiagnostics } from '@/lib/diagnostics'
 import { getOpsConfig } from '@/lib/app-config'
 import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
 import { captureValidators, originChanged, fingerprint, HARD_CACHE_TTL as HARD_TTL } from '@/lib/revalidate'
+import { getServableLlmsTxt } from '@/lib/llms-txt'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
@@ -66,6 +67,36 @@ async function resolveOwner(domain: string, token: string | null): Promise<Owner
   }
 }
 
+// Resolve a registered site's id for a domain (www-insensitive). Lighter than
+// resolveOwner — used by the /llms.txt path, which doesn't need owner/limits.
+async function resolveSiteId(domain: string): Promise<string | null> {
+  const bare = domain.replace(/^www\./, '')
+  const candidates = Array.from(new Set([domain, bare, `www.${bare}`]))
+  const { data } = await supabaseAdmin.from('sites').select('id').in('domain', candidates).limit(1)
+  return data?.[0]?.id ?? null
+}
+
+// Build the text/plain /llms.txt response for a domain, or null to fall through
+// (unregistered domain, or the site disabled auto-serving).
+async function serveLlmsTxt(domain: string): Promise<NextResponse | null> {
+  try {
+    const siteId = await resolveSiteId(domain)
+    if (!siteId) return null
+    const content = await getServableLlmsTxt(siteId)
+    if (content == null) return null
+    return new NextResponse(content, {
+      status: 200,
+      headers: {
+        ...BASE_HEADERS,
+        'Content-Type': 'text/plain; charset=utf-8',
+        'X-Cache-Status': 'LLMS',
+      },
+    })
+  } catch {
+    return null // never break the proxy for an llms.txt hiccup — fall through
+  }
+}
+
 export async function GET(req: NextRequest) {
   const reqStart = Date.now() // to measure how fast a cache HIT is served
   const { searchParams } = req.nextUrl
@@ -81,6 +112,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid URL' }, { status: 400 })
   }
   const domain = parsed.hostname
+
+  // ── /llms.txt: serve the auto-generated file directly ────────────────────────
+  // Bypasses render/cache AND bot detection — this path is the same for every
+  // visitor. Returns null only when the site is unknown or has auto_enabled=false,
+  // in which case we fall through and let the origin serve its own file.
+  if (parsed.pathname.toLowerCase() === '/llms.txt') {
+    const llms = await serveLlmsTxt(domain)
+    if (llms) return llms
+  }
 
   const ua = req.headers.get('user-agent') ?? ''
   const bot = detectBot(ua)

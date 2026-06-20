@@ -138,6 +138,20 @@ create unique index if not exists uniq_bot_cost_rate_active
 create index if not exists idx_bot_cost_rate_from
   on public.bot_cost_rate_history (effective_from desc);
 
+-- Cached llms.txt per site — proxy serves this for /llms.txt; weekly cron regen.
+create table if not exists public.llms_txt_cache (
+  site_id      uuid primary key references public.sites(id) on delete cascade,
+  content      text not null,
+  generated_at timestamptz not null default now(),
+  auto_enabled boolean not null default true
+);
+alter table public.llms_txt_cache enable row level security;
+drop policy if exists "llms_txt_cache_via_site" on public.llms_txt_cache;
+create policy "llms_txt_cache_via_site" on public.llms_txt_cache
+  for all using (
+    exists (select 1 from public.sites s where s.id = site_id and s.user_id = auth.uid())
+  );
+
 -- ══════════════════════════════════════════════════════════════════════════════
 -- 5. SITEMAPS
 -- ══════════════════════════════════════════════════════════════════════════════

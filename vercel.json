@@ -5,10 +5,12 @@
     "app/api/render/route.ts": { "maxDuration": 60 },
     "app/api/queue/process/route.ts": { "maxDuration": 60 },
     "app/api/sitemaps/recheck/route.ts": { "maxDuration": 60 },
+    "app/api/llms/regenerate/route.ts": { "maxDuration": 60 },
     "app/api/billing/webhook/route.ts": { "maxDuration": 30 }
   },
   "crons": [
     { "path": "/api/queue/process", "schedule": "0 3 * * *" },
-    { "path": "/api/sitemaps/recheck", "schedule": "0 4 * * *" }
+    { "path": "/api/sitemaps/recheck", "schedule": "0 4 * * *" },
+    { "path": "/api/llms/regenerate", "schedule": "0 5 * * 0" }
   ]
 }

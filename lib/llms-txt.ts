@@ -185,3 +185,40 @@ export async function generateLlmsTxt(siteId: string): Promise<string> {
 
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n'
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cache (llms_txt_cache) — generate-and-store + read-for-serving.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Regenerate the llms.txt for a site and upsert it into llms_txt_cache. Only
+// content + generated_at are written, so an existing row's auto_enabled flag is
+// preserved (new rows default to auto_enabled = true). Returns the new content.
+export async function generateAndStoreLlmsTxt(siteId: string): Promise<string> {
+  const content = await generateLlmsTxt(siteId)
+  await supabaseAdmin
+    .from('llms_txt_cache')
+    .upsert(
+      { site_id: siteId, content, generated_at: new Date().toISOString() },
+      { onConflict: 'site_id' }
+    )
+  return content
+}
+
+// Content to serve for a site's /llms.txt, or null when it must NOT be served by
+// RenderFast (auto_enabled = false → let the origin's own file through). On the
+// first-ever request (no row yet) it generates, stores, and serves on the fly.
+export async function getServableLlmsTxt(siteId: string): Promise<string | null> {
+  const { data: row } = await supabaseAdmin
+    .from('llms_txt_cache')
+    .select('content, auto_enabled')
+    .eq('site_id', siteId)
+    .maybeSingle()
+
+  if (row) {
+    if (row.auto_enabled === false) return null // explicitly disabled for this site
+    return row.content
+  }
+
+  // First request for this site → generate + store (auto_enabled defaults true).
+  return generateAndStoreLlmsTxt(siteId)
+}
