@@ -171,3 +171,117 @@ export function extractGeoSignals(renderedHtml: string): GeoSignals {
     fluencyScore,
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AI Citation Score + research-cited recommendations.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface Recommendation {
+  issue: string // which signal triggered it (quotesCount, hasQaSchema, …)
+  message: string // the action to take
+  impact: string // expected effect (verbatim from the cited research)
+  source: string // the research the impact figure comes from
+  priority: number // 1 = highest (biggest score weight); used for sorting
+}
+
+// ── Sub-signal weights (must sum to 100) ──────────────────────────────────────
+const WEIGHTS = {
+  quotes: 25,
+  stats: 20,
+  citations: 20,
+  fluency: 15,
+  schema: 10,
+  answer: 10,
+}
+
+// ── "Full credit" thresholds — TUNE HERE ──────────────────────────────────────
+// A signal earns its full weight at/above its threshold and scales linearly to
+// zero below it. A signal below its threshold is considered weak → recommended.
+const QUOTES_FULL = 2 // ≥2 blockquotes/quotes
+const STATS_FULL = 5 // ≥5 numbers/percentages in the body
+const CITATIONS_FULL = 2 // ≥2 outbound citations
+const FLUENCY_FULL = 60 // Flesch ≥60 (plain, easy-to-read English)
+
+export function computeAiCitationScore(signals: GeoSignals): {
+  score: number
+  recommendations: Recommendation[]
+} {
+  // Normalize each sub-signal to 0..1 (fraction of its weight earned).
+  const fQuotes = Math.min(signals.quotesCount, QUOTES_FULL) / QUOTES_FULL
+  const fStats = Math.min(signals.statsCount, STATS_FULL) / STATS_FULL
+  const fCitations = Math.min(signals.citationsCount, CITATIONS_FULL) / CITATIONS_FULL
+  const fFluency = Math.min(Math.max(signals.fluencyScore, 0), FLUENCY_FULL) / FLUENCY_FULL
+  const fSchema = signals.hasQaSchema ? 1 : 0
+  const fAnswer = signals.answerUpfront ? 1 : 0
+
+  const score = Math.round(
+    WEIGHTS.quotes * fQuotes +
+      WEIGHTS.stats * fStats +
+      WEIGHTS.citations * fCitations +
+      WEIGHTS.fluency * fFluency +
+      WEIGHTS.schema * fSchema +
+      WEIGHTS.answer * fAnswer
+  )
+
+  // One recommendation per weak/missing signal, ordered by score weight
+  // (quotes → stats → citations → fluency → schema → front-loaded answer).
+  const recommendations: Recommendation[] = []
+
+  if (signals.quotesCount < QUOTES_FULL)
+    recommendations.push({
+      issue: 'quotesCount',
+      message: 'Add 1–2 expert quotes or quoted statistics.',
+      impact: '+41% AI citation likelihood',
+      source: 'Princeton University study, 2024',
+      priority: 1,
+    })
+
+  if (signals.statsCount < STATS_FULL)
+    recommendations.push({
+      issue: 'statsCount',
+      message: 'Add specific numbers or data points.',
+      impact: '+32% AI citation likelihood',
+      source: 'Princeton University study, 2024',
+      priority: 2,
+    })
+
+  if (signals.citationsCount < CITATIONS_FULL)
+    recommendations.push({
+      issue: 'citationsCount',
+      message: 'Link to 1–2 authoritative external sources.',
+      impact: '+30% AI citation likelihood',
+      source: 'Princeton University study, 2024',
+      priority: 3,
+    })
+
+  if (signals.fluencyScore < FLUENCY_FULL)
+    recommendations.push({
+      issue: 'fluencyScore',
+      message: 'Simplify sentence structure and wording.',
+      impact: '+28% AI citation likelihood',
+      source: 'Princeton University study, 2024',
+      priority: 4,
+    })
+
+  if (!signals.hasQaSchema)
+    recommendations.push({
+      issue: 'hasQaSchema',
+      message: 'Add FAQPage/QAPage schema markup.',
+      impact: '+36% increase in AI appearances for small sites',
+      source: 'Yext study (6.8M citations analyzed)',
+      priority: 5,
+    })
+
+  if (!signals.answerUpfront)
+    recommendations.push({
+      issue: 'answerUpfront',
+      message: 'State the direct answer in the first 1–2 sentences.',
+      impact: 'Higher weight in AI Overviews/Perplexity retrieval',
+      source: 'Industry GEO research consensus',
+      priority: 6,
+    })
+
+  recommendations.sort((a, b) => a.priority - b.priority)
+
+  return { score, recommendations }
+}
