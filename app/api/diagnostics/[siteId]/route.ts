@@ -144,11 +144,21 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ siteId: str
       .slice(0, 5)
       .map(([message, count]) => ({ message, count }))
 
+    // Health breakdown across ALL analysed pages (not just the problem ones).
+    const distribution = {
+      good: scored.filter((u) => u.score >= 70).length,
+      needsWork: scored.filter((u) => u.score >= 50 && u.score < 70).length,
+      poor: scored.filter((u) => u.score < 50).length,
+    }
+    const healthy = scored.length - urlsWithIssues.length // fully clean pages
+
     return NextResponse.json({
       domain: site.domain,
       healthScore,
       urlsChecked: scored.length,
       totalRendered: totalRendered ?? scored.length,
+      distribution,
+      healthy,
       urlsWithIssues,
       topErrors,
     })

@@ -27,6 +27,7 @@ import {
 } from '@ant-design/icons'
 import Link from 'next/link'
 import { useDashboard } from '@/lib/dashboard-context'
+import { DonutChart, Legend } from '@/components/charts/Charts'
 
 const BRAND = '#2da01d'
 const { Title, Text, Paragraph } = Typography
@@ -68,6 +69,8 @@ interface DiagSummary {
   healthScore: number | null
   urlsChecked: number
   totalRendered: number
+  distribution?: { good: number; needsWork: number; poor: number }
+  healthy?: number
   urlsWithIssues: UrlIssue[]
   topErrors: { message: string; count: number }[]
   message?: string
@@ -262,6 +265,12 @@ export default function BotVisibilityPage() {
 
   const score = data?.healthScore ?? null
   const issues = data?.urlsWithIssues ?? []
+  const dist = data?.distribution ?? { good: 0, needsWork: 0, poor: 0 }
+  const healthSlices = [
+    { label: 'Good', value: dist.good, color: BRAND },
+    { label: 'Needs Work', value: dist.needsWork, color: '#faad14' },
+    { label: 'Poor', value: dist.poor, color: '#ff4d4f' },
+  ]
 
   return (
     <div style={{ padding: 24 }}>
@@ -308,6 +317,7 @@ export default function BotVisibilityPage() {
           <Skeleton active paragraph={{ rows: 6 }} />
         </Card>
       ) : (
+        <>
         <Row gutter={[16, 16]}>
           {/* ── SEO score ─────────────────────────────────────────────────── */}
           <Col xs={24} md={8}>
@@ -339,17 +349,38 @@ export default function BotVisibilityPage() {
                     </Tag>
                   </div>
                 )}
-                <div style={{ marginTop: 12 }}>
-                  <Text type="secondary" style={{ fontSize: 12 }}>
-                    Analysed {data?.urlsChecked ?? 0} of {data?.totalRendered ?? 0} rendered pages
-                  </Text>
-                </div>
               </div>
             </Card>
           </Col>
 
-          {/* ── Issues ────────────────────────────────────────────────────── */}
+          {/* ── Page health breakdown (shows the good pages too, not only problems) ── */}
           <Col xs={24} md={16}>
+            <Card title="Page Health" styles={{ body: { minHeight: 230 } }}>
+              {score == null ? (
+                <Empty description="Re-scan to see the page-health breakdown." />
+              ) : (
+                <Row align="middle" gutter={[16, 16]}>
+                  <Col xs={24} sm={10} style={{ display: 'flex', justifyContent: 'center' }}>
+                    <DonutChart size={180} centerLabel={String(data?.urlsChecked ?? 0)} centerSub="pages" data={healthSlices} />
+                  </Col>
+                  <Col xs={24} sm={14}>
+                    <Legend data={healthSlices} />
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid #f0f0f0' }}>
+                      <Text type="secondary" style={{ fontSize: 13 }}>
+                        Analysed <b>{data?.urlsChecked ?? 0}</b> of {data?.totalRendered ?? 0} rendered pages ·{' '}
+                        <b style={{ color: BRAND }}>{data?.healthy ?? 0}</b> fully healthy
+                      </Text>
+                    </div>
+                  </Col>
+                </Row>
+              )}
+            </Card>
+          </Col>
+        </Row>
+
+        {/* ── Issues ────────────────────────────────────────────────────────── */}
+        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+          <Col xs={24}>
             <Card title={`Issues Found${issues.length ? ` (${issues.length})` : ''}`}>
               {issues.length === 0 ? (
                 <Empty
@@ -460,6 +491,7 @@ export default function BotVisibilityPage() {
             </Card>
           </Col>
         </Row>
+        </>
       )}
     </div>
   )
