@@ -157,7 +157,9 @@ create table if not exists public.render_diagnostics (
   content_diff_percentage numeric(5,2) not null default 0,
   missing_seo_elements    jsonb not null default '[]'::jsonb,
   render_succeeded        boolean not null default true,
-  render_time_ms          integer
+  render_time_ms          integer,
+  geo_signals             jsonb,
+  ai_citation_score       numeric
 );
 
 -- ══════════════════════════════════════════════════════════════════════════════
