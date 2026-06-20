@@ -112,6 +112,32 @@ as $$
         updated_at    = now();
 $$;
 
+-- RenderFast-admin-owned platform settings (structured jsonb config, e.g. the
+-- bandwidth $/GB cost estimate). Never client-editable. See migration 012.
+create table if not exists public.platform_settings (
+  key        text primary key,
+  value      jsonb not null,
+  updated_at timestamptz not null default now(),
+  updated_by uuid references public.users(id)
+);
+
+-- Append-only history of every bandwidth rate that was active, so past months'
+-- cost estimates use the rate active at the time (half-open [from, to) ranges;
+-- active row has effective_to = null).
+create table if not exists public.bot_cost_rate_history (
+  id              uuid primary key default gen_random_uuid(),
+  rate_per_gb_usd numeric(10,4) not null check (rate_per_gb_usd >= 0),
+  effective_from  date not null,
+  effective_to    date,
+  set_by          uuid references public.users(id),
+  created_at      timestamptz not null default now(),
+  check (effective_to is null or effective_to >= effective_from)
+);
+create unique index if not exists uniq_bot_cost_rate_active
+  on public.bot_cost_rate_history ((true)) where effective_to is null;
+create index if not exists idx_bot_cost_rate_from
+  on public.bot_cost_rate_history (effective_from desc);
+
 -- ══════════════════════════════════════════════════════════════════════════════
 -- 5. SITEMAPS
 -- ══════════════════════════════════════════════════════════════════════════════
