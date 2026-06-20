@@ -12,6 +12,7 @@ const INJECT_API_PREFIXES = [
   '/api/broken-links',
   '/api/cache',
   '/api/diagnostics',
+  '/api/bot-cost',
   '/api/gsc',
 ]
 
@@ -108,6 +109,7 @@ export const config = {
     '/api/cache/:path*',
     '/api/cache',
     '/api/diagnostics/:path*',
+    '/api/bot-cost/:path*',
     '/api/gsc',
     '/api/gsc/:path*',
   ],
