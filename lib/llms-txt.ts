@@ -190,35 +190,44 @@ export async function generateLlmsTxt(siteId: string): Promise<string> {
 // Cache (llms_txt_cache) — generate-and-store + read-for-serving.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Regenerate the llms.txt for a site and upsert it into llms_txt_cache. Only
-// content + generated_at are written, so an existing row's auto_enabled flag is
-// preserved (new rows default to auto_enabled = true). Returns the new content.
+// Regenerate the llms.txt for a site from its pages and upsert it. This is the
+// "managed/auto" path, so it sets auto_enabled = true — regenerating always
+// returns a site to automatic mode (and the weekly cron, which only ever touches
+// auto rows, keeps it fresh). Returns the new content.
 export async function generateAndStoreLlmsTxt(siteId: string): Promise<string> {
   const content = await generateLlmsTxt(siteId)
   await supabaseAdmin
     .from('llms_txt_cache')
     .upsert(
-      { site_id: siteId, content, generated_at: new Date().toISOString() },
+      { site_id: siteId, content, generated_at: new Date().toISOString(), auto_enabled: true },
       { onConflict: 'site_id' }
     )
   return content
 }
 
-// Content to serve for a site's /llms.txt, or null when it must NOT be served by
-// RenderFast (auto_enabled = false → let the origin's own file through). On the
-// first-ever request (no row yet) it generates, stores, and serves on the fly.
+// Save a client's manually-edited llms.txt. Sets auto_enabled = false so the
+// weekly cron won't overwrite their custom content (manual = frozen until they
+// regenerate back to auto). Returns the saved content.
+export async function saveManualLlmsTxt(siteId: string, content: string): Promise<string> {
+  await supabaseAdmin
+    .from('llms_txt_cache')
+    .upsert(
+      { site_id: siteId, content, generated_at: new Date().toISOString(), auto_enabled: false },
+      { onConflict: 'site_id' }
+    )
+  return content
+}
+
+// Content to serve for a site's /llms.txt. Once a row exists we always serve it
+// (whether it's auto-managed or a manual override). On the first-ever request
+// (no row yet) it generates, stores, and serves on the fly.
 export async function getServableLlmsTxt(siteId: string): Promise<string | null> {
   const { data: row } = await supabaseAdmin
     .from('llms_txt_cache')
-    .select('content, auto_enabled')
+    .select('content')
     .eq('site_id', siteId)
     .maybeSingle()
 
-  if (row) {
-    if (row.auto_enabled === false) return null // explicitly disabled for this site
-    return row.content
-  }
-
-  // First request for this site → generate + store (auto_enabled defaults true).
-  return generateAndStoreLlmsTxt(siteId)
+  if (row) return row.content
+  return generateAndStoreLlmsTxt(siteId) // first request → generate + store
 }
