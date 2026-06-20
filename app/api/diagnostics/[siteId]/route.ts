@@ -4,6 +4,7 @@ import { isRenderConfigured } from '@/lib/renderer'
 import { processDiagnosticsJob, isUrlOnDomain, reclaimIfStale } from '@/lib/diagnostics-worker'
 import { getOpsConfig } from '@/lib/app-config'
 import { isRenderableUrl, normalizeUrl } from '@/lib/url-utils'
+import { computeAiCitationScore, type GeoSignals } from '@/lib/geo-signals'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -27,6 +28,8 @@ interface DiagRow {
   missing_seo_elements: { element: string; jsOnly: boolean }[]
   render_succeeded: boolean
   render_time_ms: number | null
+  geo_signals: GeoSignals | null
+  ai_citation_score: number | null
 }
 
 // Per-URL health score (0–100) from the latest diagnostic for that URL.
@@ -68,7 +71,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ siteId: str
     const { data: rows } = await supabaseAdmin
       .from('render_diagnostics')
       .select(
-        'url, rendered_at, console_errors, failed_requests, content_diff_percentage, missing_seo_elements, render_succeeded, render_time_ms'
+        'url, rendered_at, console_errors, failed_requests, content_diff_percentage, missing_seo_elements, render_succeeded, render_time_ms, geo_signals, ai_citation_score'
       )
       .eq('site_id', siteId)
       .order('rendered_at', { ascending: false })
@@ -104,19 +107,29 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ siteId: str
 
     // Per-URL scores → overall health score (average). Raw error arrays are
     // included so the dashboard accordion can show full detail on expand.
-    const scored = latest.map((r) => ({
-      url: r.url,
-      score: urlHealthScore(r),
-      contentDiffPercentage: r.content_diff_percentage,
-      renderSucceeded: r.render_succeeded,
-      renderTimeMs: r.render_time_ms,
-      missingSeoElements: (r.missing_seo_elements ?? []).map((m) => m.element),
-      consoleErrors: r.console_errors ?? [],
-      failedRequests: r.failed_requests ?? [],
-      consoleErrorCount: r.console_errors?.length ?? 0,
-      failedRequestCount: r.failed_requests?.length ?? 0,
-      renderedAt: r.rendered_at,
-    }))
+    const scored = latest.map((r) => {
+      // AI Citation Readiness: score is stored; recommendations are derived from
+      // the stored signals at read time (single source of truth — tune freely).
+      const geo = r.geo_signals
+      const ai = geo ? computeAiCitationScore(geo) : null
+      return {
+        url: r.url,
+        score: urlHealthScore(r),
+        contentDiffPercentage: r.content_diff_percentage,
+        renderSucceeded: r.render_succeeded,
+        renderTimeMs: r.render_time_ms,
+        missingSeoElements: (r.missing_seo_elements ?? []).map((m) => m.element),
+        consoleErrors: r.console_errors ?? [],
+        failedRequests: r.failed_requests ?? [],
+        consoleErrorCount: r.console_errors?.length ?? 0,
+        failedRequestCount: r.failed_requests?.length ?? 0,
+        renderedAt: r.rendered_at,
+        // AI citation fields (null when a row predates this feature / migration).
+        aiCitationScore: r.ai_citation_score ?? ai?.score ?? null,
+        geoSignals: geo,
+        recommendations: ai?.recommendations ?? [],
+      }
+    })
 
     const healthScore = Math.round(scored.reduce((s, u) => s + u.score, 0) / scored.length)
 

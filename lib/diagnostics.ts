@@ -15,6 +15,7 @@
 //                            latest N runs per URL.
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabaseAdmin } from '@/lib/supabase'
+import { extractGeoSignals, computeAiCitationScore, type GeoSignals } from '@/lib/geo-signals'
 
 // Master on/off switch — set RENDER_DIAGNOSTICS=off to disable with zero overhead.
 export const DIAGNOSTICS_ENABLED = process.env.RENDER_DIAGNOSTICS !== 'off'
@@ -169,6 +170,8 @@ async function persistDiagnostic(row: {
   missing_seo_elements: unknown[]
   render_succeeded: boolean
   render_time_ms: number
+  geo_signals: GeoSignals
+  ai_citation_score: number
 }) {
   await supabaseAdmin.from('render_diagnostics').insert({
     ...row,
@@ -229,6 +232,11 @@ export async function runDiagnostics(input: DiagnosticInput): Promise<void> {
     })),
   ]
 
+  // AI Citation Readiness — derive signals from the rendered HTML we already
+  // have, score them, and store both in the SAME write (no extra DB round-trip).
+  const geoSignals = extractGeoSignals(renderedHtml)
+  const { score: aiCitationScore } = computeAiCitationScore(geoSignals)
+
   await persistDiagnostic({
     site_id: input.siteId,
     url: input.url,
@@ -238,6 +246,8 @@ export async function runDiagnostics(input: DiagnosticInput): Promise<void> {
     missing_seo_elements: diffSeoElements(rawHtml, renderedHtml),
     render_succeeded: computeRenderSucceeded(renderedHtml, signals),
     render_time_ms: input.renderTimeMs,
+    geo_signals: geoSignals,
+    ai_citation_score: aiCitationScore,
   })
 }
 
