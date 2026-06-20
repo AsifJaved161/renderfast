@@ -72,6 +72,7 @@ export interface DiagnosticInput {
   renderedHtml: string // the fully JS-rendered HTML we already produced
   renderTimeMs: number
   signals?: Partial<RenderSignals> // optional Part-1 data from a Playwright render
+  rawHtml?: string | null // pre-fetched raw HTML — skips the internal origin fetch
 }
 
 // ── Text extraction ──────────────────────────────────────────────────────────
@@ -195,16 +196,21 @@ async function persistDiagnostic(row: {
 // Exported so a "re-scan" endpoint can await a batch; captureDiagnostics() is
 // the fire-and-forget wrapper used on the hot render path.
 export async function runDiagnostics(input: DiagnosticInput): Promise<void> {
-  // Fetch the raw, no-JS HTML the way a non-JS crawler would receive it.
+  // Use a caller-supplied raw HTML if given (avoids a duplicate origin fetch);
+  // otherwise fetch the raw, no-JS HTML a non-JS crawler would receive.
   let rawHtml = ''
-  try {
-    const res = await fetch(input.url, {
-      headers: { 'User-Agent': RAW_CRAWLER_UA, Accept: 'text/html' },
-      signal: AbortSignal.timeout(RAW_FETCH_TIMEOUT_MS),
-    })
-    rawHtml = await res.text()
-  } catch {
-    // Raw fetch failed (timeout/blocked) — treat as empty; diff will read 100%.
+  if (input.rawHtml != null) {
+    rawHtml = input.rawHtml
+  } else {
+    try {
+      const res = await fetch(input.url, {
+        headers: { 'User-Agent': RAW_CRAWLER_UA, Accept: 'text/html' },
+        signal: AbortSignal.timeout(RAW_FETCH_TIMEOUT_MS),
+      })
+      rawHtml = await res.text()
+    } catch {
+      // Raw fetch failed (timeout/blocked) — treat as empty; diff will read 100%.
+    }
   }
 
   // Truncate both sides before any text processing (resource-exhaustion guard).

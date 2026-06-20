@@ -5,7 +5,7 @@ import { renderPage, htmlToMarkdown } from '@/lib/renderer'
 import { captureDiagnostics } from '@/lib/diagnostics'
 import { getOpsConfig } from '@/lib/app-config'
 import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
-import { captureValidators, originChanged, HARD_CACHE_TTL as HARD_TTL } from '@/lib/revalidate'
+import { captureValidators, originChanged, fingerprint, HARD_CACHE_TTL as HARD_TTL } from '@/lib/revalidate'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
@@ -141,12 +141,34 @@ export async function GET(req: NextRequest) {
   await persistRender(owner, domain, renderParsed, html, renderTimeMs, statusCode, cacheTtlSeconds)
   logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, false, renderTimeMs, statusCode)
 
-  // ── Background (non-blocking): diagnostics + capture change-detection
-  //    validators so future checks can skip the render if nothing changed. ──────
+  // ── Background (non-blocking): ONE origin fetch feeds both diagnostics and
+  //    the change-detection validators (no duplicate request). ─────────────────
   after(async () => {
-    captureDiagnostics({ siteId: owner.siteId, url: renderUrl, renderedHtml: html, renderTimeMs })
-    const v = await captureValidators(renderUrl)
-    if (v) await supabaseAdmin.from('cache_entries').update(v).eq('url', renderUrl).eq('user_id', owner.userId)
+    let rawHtml: string | null = null
+    let etag: string | null = null
+    let lastModified: string | null = null
+    try {
+      const res = await fetch(renderUrl, {
+        headers: { 'User-Agent': 'RenderFastBot/1.0 (+https://renderfast.vercel.app)', Accept: 'text/html' },
+        signal: AbortSignal.timeout(12_000),
+      })
+      if (res.ok) {
+        rawHtml = await res.text()
+        etag = res.headers.get('etag')
+        lastModified = res.headers.get('last-modified')
+      }
+    } catch {
+      /* origin unreachable — diagnostics fall back, validators skipped */
+    }
+
+    captureDiagnostics({ siteId: owner.siteId, url: renderUrl, renderedHtml: html, renderTimeMs, rawHtml })
+    if (rawHtml != null) {
+      await supabaseAdmin
+        .from('cache_entries')
+        .update({ etag, last_modified: lastModified, content_hash: fingerprint(rawHtml) })
+        .eq('url', renderUrl)
+        .eq('user_id', owner.userId)
+    }
   })
 
   return serve(html, wantsMarkdown, 'MISS', statusCode)

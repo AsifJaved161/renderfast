@@ -32,7 +32,7 @@ function visibleText(html: string): string {
 
 // Fingerprint = title + meta description + visible text. Changes only when the
 // page's real content / key SEO tags change.
-function fingerprint(html: string): string {
+export function fingerprint(html: string): string {
   const title = (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? '').trim()
   const desc =
     html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i)?.[1] ?? ''

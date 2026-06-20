@@ -233,8 +233,14 @@ create table if not exists public.app_settings (
 -- INDEXES
 -- ══════════════════════════════════════════════════════════════════════════════
 create index if not exists idx_renders_site_created    on public.renders(site_id, created_at desc);
+create index if not exists idx_renders_user_created    on public.renders(user_id, created_at desc);
 create index if not exists idx_admin_logs_created      on public.admin_logs(created_at desc);
 create index if not exists idx_admin_logs_admin        on public.admin_logs(admin_id);
+create index if not exists idx_cache_entries_site_url  on public.cache_entries(site_id, url);
+create index if not exists idx_cache_entries_url       on public.cache_entries(url);
+create index if not exists idx_cache_entries_user      on public.cache_entries(user_id, cached_at desc);
+create index if not exists idx_caching_queue_site_status on public.caching_queue(site_id, status);
+create index if not exists idx_caching_queue_user_status on public.caching_queue(user_id, status);
 create index if not exists idx_cache_entries_url_hash  on public.cache_entries(url_hash);
 create index if not exists idx_bot_visits_site_created on public.bot_visits(site_id, created_at desc);
 create index if not exists idx_sites_user_id           on public.sites(user_id);
