@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 
 type Params = { params: Promise<{ id: string }> }
 
-const UPDATABLE = ['name', 'price_monthly', 'render_limit', 'site_limit', 'is_active', 'features', 'stripe_price_id'] as const
+const UPDATABLE = ['name', 'price_monthly', 'render_limit', 'site_limit', 'cache_size_gb', 'sort_order', 'is_active', 'features', 'stripe_price_id'] as const
 
 // ── GET — single plan ────────────────────────────────────────────────────────
 export async function GET(req: NextRequest, { params }: Params) {

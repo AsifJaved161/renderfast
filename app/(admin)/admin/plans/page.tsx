@@ -53,20 +53,26 @@ export default function AdminPlansPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
+    // Plans are the primary data — load them on their own so a failing
+    // /api/admin/stats can never blank out the plans list.
     try {
-      const [p, s] = await Promise.all([
-        fetch('/api/admin/plans').then((r) => r.json()),
-        fetch('/api/admin/stats').then((r) => r.json()),
-      ])
+      const p = await fetch('/api/admin/plans').then((r) => r.json())
       setPlans(p.plans ?? [])
+    } catch {
+      message.error('Failed to load plans')
+    } finally {
+      setLoading(false)
+    }
+
+    // Stats only supplies the per-plan user counts — optional, never blocking.
+    try {
+      const s = await fetch('/api/admin/stats').then((r) => r.json())
       const counts: Record<string, number> = {}
       for (const tp of s.top_plans ?? []) counts[tp.plan] = tp.user_count
       setUserCounts(counts)
       setTopPlans(s.top_plans ?? [])
     } catch {
-      message.error('Failed to load plans')
-    } finally {
-      setLoading(false)
+      /* counts are supplementary — leave them empty on failure */
     }
   }, [])
 
