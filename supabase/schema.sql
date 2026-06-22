@@ -329,6 +329,7 @@ create table if not exists public.app_settings (
 -- ══════════════════════════════════════════════════════════════════════════════
 create index if not exists idx_renders_site_created    on public.renders(site_id, created_at desc);
 create index if not exists idx_renders_user_created    on public.renders(user_id, created_at desc);
+create index if not exists idx_renders_created          on public.renders(created_at desc);
 create index if not exists idx_admin_logs_created      on public.admin_logs(created_at desc);
 create index if not exists idx_admin_logs_admin        on public.admin_logs(admin_id);
 create index if not exists idx_cache_entries_site_url  on public.cache_entries(site_id, url);

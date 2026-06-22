@@ -107,7 +107,7 @@ export default function AdminRendersPage() {
     setLoading(true)
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) })
-      if (userEmail) params.set('user_id', userEmail) // server matches email-as-id loosely; see note
+      if (userEmail) params.set('user_id', userEmail) // server resolves email (or raw id) → user ids
       if (domain) params.set('domain', domain)
       if (botType) params.set('bot_type', botType)
       if (cache) params.set('cache', cache)
@@ -176,7 +176,7 @@ export default function AdminRendersPage() {
       title: 'Domain',
       dataIndex: 'domain',
       width: 150,
-      render: (d: string) => <Text strong style={{ color: '#eee' }}>{d}</Text>,
+      render: (d: string) => <Text strong style={{ color: '#1f2937' }}>{d}</Text>,
     },
     {
       title: 'URL',
@@ -258,7 +258,7 @@ export default function AdminRendersPage() {
           <StatCard label="Renders This Month" value={stats.this_month.toLocaleString()} />
         </Col>
         <Col xs={12} md={6}>
-          <StatCard label="Platform Cache Hit Rate" value={`${stats.platform_hit_rate}%`} />
+          <StatCard label="Cache Hit Rate (7d)" value={`${stats.platform_hit_rate}%`} />
         </Col>
         <Col xs={12} md={6}>
           <StatCard label="Avg Render Time" value={`${stats.avg_render_time} ms`} />
