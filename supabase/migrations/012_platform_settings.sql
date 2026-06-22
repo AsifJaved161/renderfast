@@ -1,4 +1,4 @@
--- Platform-wide settings owned by RenderFast's OWN admin (e.g. Asif) — never
+-- Platform-wide settings owned by RenderForAI's OWN admin (e.g. Asif) — never
 -- editable or visible-as-editable by clients. Distinct from app_settings (which
 -- holds text env-overrides); this stores structured jsonb config like the
 -- bandwidth $/GB cost estimate. Run once in the Supabase SQL editor.

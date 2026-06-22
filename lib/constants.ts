@@ -1,6 +1,6 @@
 import type { Plan } from '@/lib/supabase'
 
-export const APP_NAME = 'RenderFast'
+export const APP_NAME = 'RenderForAI'
 export const BRAND_COLOR = '#2da01d'
 
 // ── Operational limits ────────────────────────────────────────────────────────

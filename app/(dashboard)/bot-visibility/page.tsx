@@ -189,7 +189,7 @@ function deriveIssues(u: UrlIssue): DerivedIssue[] {
       detail: `${u.contentDiffPercentage}% of content invisible to crawlers (only appears after JS).`,
       color: 'orange',
       icon: <EyeInvisibleOutlined />,
-      fix: 'This page builds its content with JavaScript, which most crawlers (Googlebot, GPTBot, ClaudeBot) don’t fully execute — so they see a near-empty page. Serve them the pre-rendered HTML: make sure your RenderFast integration is active on this domain (it returns the fully-rendered page to bots). For best results also server-render critical content.',
+      fix: 'This page builds its content with JavaScript, which most crawlers (Googlebot, GPTBot, ClaudeBot) don’t fully execute — so they see a near-empty page. Serve them the pre-rendered HTML: make sure your RenderForAI integration is active on this domain (it returns the fully-rendered page to bots). For best results also server-render critical content.',
       action: { label: 'Check integration', href: '/integration-wizard' },
     })
 

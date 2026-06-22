@@ -18,7 +18,7 @@ export default function NotFound() {
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: 22, marginBottom: 16 }}>
         <span>⚡</span>
         <span style={{ color: '#ffffff' }}>Render</span>
-        <span style={{ color: '#2da01d', marginLeft: -4 }}>Fast</span>
+        <span style={{ color: '#2da01d', marginLeft: -4 }}>ForAI</span>
       </div>
       <h1 style={{ fontSize: 64, fontWeight: 800, color: '#2da01d', margin: 0 }}>404</h1>
       <p style={{ fontSize: 18, color: '#e5e7eb', margin: '8px 0 4px' }}>Page Not Found</p>

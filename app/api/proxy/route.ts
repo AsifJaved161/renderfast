@@ -14,7 +14,7 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 const CACHE_TTL = 86400 // fallback when ops config is unavailable
-const BASE_HEADERS = { 'X-Robots-Tag': 'noindex', 'X-Powered-By': 'RenderFast' }
+const BASE_HEADERS = { 'X-Robots-Tag': 'noindex', 'X-Powered-By': 'RenderForAI' }
 
 function dbBotType(t: string | null): 'search' | 'ai' | 'social' | 'unknown' {
   return t === 'search' || t === 'ai' || t === 'social' ? t : 'unknown'
@@ -195,7 +195,7 @@ export async function GET(req: NextRequest) {
       let lastModified: string | null = null
       try {
         const res = await fetch(renderUrl, {
-          headers: { 'User-Agent': 'RenderFastBot/1.0 (+https://renderfast.vercel.app)', Accept: 'text/html' },
+          headers: { 'User-Agent': 'RenderForAIBot/1.0 (+https://renderforai.com)', Accept: 'text/html' },
           signal: AbortSignal.timeout(12_000),
         })
         if (res.ok) {

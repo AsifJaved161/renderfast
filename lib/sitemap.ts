@@ -6,7 +6,7 @@ import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
 
 // Keep batches sane for free-tier DBs / function timeouts.
 const MAX_CHILD_SITEMAPS = 20
-const UA = 'RenderFastBot/1.0 (+https://renderfast.vercel.app)'
+const UA = 'RenderForAIBot/1.0 (+https://renderforai.com)'
 
 export interface SitemapResult {
   sitemapUrl: string | null

@@ -133,7 +133,7 @@ const NAV: NavGroup[] = [
       { key: '/team', label: 'Team', icon: <TeamOutlined />, hint: 'Invite & manage team members' },
       { key: '/security', label: 'Security', icon: <LockOutlined />, hint: 'API keys & access settings' },
       { key: '/settings', label: 'Settings', icon: <SettingOutlined />, hint: 'Account preferences' },
-      { key: '/integration-wizard', label: 'Integration Guide', icon: <RocketOutlined />, hint: 'Connect RenderFast to your site' },
+      { key: '/integration-wizard', label: 'Integration Guide', icon: <RocketOutlined />, hint: 'Connect RenderForAI to your site' },
     ],
   },
 ]
@@ -360,7 +360,7 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
               ) : (
                 <span>
                   ⚡ <span style={{ color: c.logoRender }}>Render</span>
-                  <span style={{ color: BRAND }}>Fast</span>
+                  <span style={{ color: BRAND }}>ForAI</span>
                 </span>
               )}
             </div>

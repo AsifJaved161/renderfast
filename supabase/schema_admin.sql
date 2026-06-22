@@ -1,4 +1,4 @@
--- RenderFast — Admin system additions
+-- RenderForAI — Admin system additions
 -- Run AFTER schema.sql. Safe to re-run (idempotent where possible).
 
 -- ══════════════════════════════════════════════════════════════════════════════

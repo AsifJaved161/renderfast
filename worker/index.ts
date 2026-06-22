@@ -1,17 +1,17 @@
 /**
- * RenderFast — Cloudflare Worker integration.
+ * RenderForAI — Cloudflare Worker integration.
  *
  * Deploy this in front of your site (Workers Route on your zone). It serves
- * prerendered HTML from RenderFast to search/AI crawlers and passes real users
+ * prerendered HTML from RenderForAI to search/AI crawlers and passes real users
  * straight through to your origin.
  *
  *   1. npm i -g wrangler
- *   2. Set PRERENDER_TOKEN below to your RenderFast API key.
+ *   2. Set PRERENDER_TOKEN below to your RenderForAI API key.
  *   3. wrangler deploy  (route: example.com/*)
  */
 
-const PRERENDER_ORIGIN = 'https://renderfast.vercel.app/api/proxy'
-const PRERENDER_TOKEN = 'YOUR_API_KEY' // ← your RenderFast API key
+const PRERENDER_ORIGIN = 'https://renderforai.com/api/proxy'
+const PRERENDER_TOKEN = 'YOUR_API_KEY' // ← your RenderForAI API key
 
 // Search engines + AI crawlers + social unfurlers.
 const BOT_UA =
@@ -40,7 +40,7 @@ export default {
         if (res.status === 200 && (type.includes('text/html') || type.includes('text/markdown'))) {
           return new Response(res.body, {
             status: 200,
-            headers: { 'content-type': type, 'x-prerendered': 'renderfast' },
+            headers: { 'content-type': type, 'x-prerendered': 'renderforai' },
           })
         }
       } catch {

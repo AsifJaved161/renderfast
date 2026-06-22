@@ -81,7 +81,7 @@ export default function AdminDashboardPage() {
     const blob = new Blob([csv], { type: 'text/csv' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = `renderfast-report-${Date.now()}.csv`
+    a.download = `renderforai-report-${Date.now()}.csv`
     a.click()
     URL.revokeObjectURL(a.href)
   }

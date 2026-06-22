@@ -137,7 +137,7 @@ export default function GscPage() {
                   </Title>
                   <Paragraph type="secondary" style={{ margin: '4px 0 0', maxWidth: 520 }}>
                     Link your GSC account to see clicks, impressions, average position and your
-                    top queries & pages right inside RenderFast. Read-only — we never change
+                    top queries & pages right inside RenderForAI. Read-only — we never change
                     anything in your Search Console.
                   </Paragraph>
                 </div>

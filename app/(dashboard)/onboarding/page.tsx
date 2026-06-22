@@ -32,7 +32,7 @@ import type { DbSite } from '@/lib/supabase'
 const BRAND = '#2da01d'
 const { Title, Text, Paragraph } = Typography
 const APP_URL =
-  process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : 'https://renderfast.vercel.app')
+  process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : 'https://renderforai.com')
 
 interface RenderResult {
   ok: boolean
@@ -137,7 +137,7 @@ export default function OnboardingPage() {
       <div style={{ textAlign: 'center', marginBottom: 20 }}>
         <Title level={3} style={{ marginBottom: 4 }}>
           <Space>
-            <RocketOutlined style={{ color: BRAND }} /> Welcome to RenderFast
+            <RocketOutlined style={{ color: BRAND }} /> Welcome to RenderForAI
           </Space>
         </Title>
         <Text type="secondary">Three quick steps and search &amp; AI bots will see your fully-rendered pages.</Text>
@@ -180,7 +180,7 @@ export default function OnboardingPage() {
       {step === 1 && site && (
         <Card title={<Space><ApiOutlined /> Connect {site.domain}</Space>}>
           <Paragraph type="secondary" style={{ marginTop: 0 }}>
-            Route bot traffic through RenderFast so crawlers get the prerendered HTML. Use any
+            Route bot traffic through RenderForAI so crawlers get the prerendered HTML. Use any
             method below — full per-platform guides are in the Integration Guide.
           </Paragraph>
           <div style={{ background: '#f6f8fa', border: '1px solid #eaecef', borderRadius: 8, padding: 14, fontFamily: 'monospace', fontSize: 13 }}>
@@ -200,7 +200,7 @@ export default function OnboardingPage() {
             showIcon
             style={{ marginTop: 12 }}
             message="You can finish this later"
-            description="Integration is how live bots get served. First, let's prove RenderFast can render your site — click Continue."
+            description="Integration is how live bots get served. First, let's prove RenderForAI can render your site — click Continue."
           />
           <Space style={{ marginTop: 16 }}>
             <Button onClick={() => setStep(2)} type="primary" style={{ background: BRAND, borderColor: BRAND }}>
@@ -248,7 +248,7 @@ export default function OnboardingPage() {
         <Card>
           <Result
             status="success"
-            title="Your site is RenderFast-ready 🎉"
+            title="Your site is RenderForAI-ready 🎉"
             subTitle={`We rendered ${site?.domain} successfully. Bots will now get the fully-rendered page.`}
           />
           <Row gutter={[16, 16]} style={{ marginBottom: 8 }}>

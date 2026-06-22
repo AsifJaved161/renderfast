@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Bandwidth $/GB cost estimate — RenderFast-admin-owned (see migration 012).
+// Bandwidth $/GB cost estimate — RenderForAI-admin-owned (see migration 012).
 //
 // The rate translates bot_traffic_stats.bytes_served into an estimated dollar
-// figure. It is ADMIN-OWNED: only RenderFast's own admins read/write it via the
+// figure. It is ADMIN-OWNED: only RenderForAI's own admins read/write it via the
 // admin API (gated by requireAdmin). These functions use the service-role client
 // for internal, server-side cost computation — they MUST NOT be exposed to a
 // client-facing route without a requireAdmin() guard on top.

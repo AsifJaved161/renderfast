@@ -1,4 +1,4 @@
-# RenderFast — Audit Log
+# RenderForAI — Audit Log
 
 Running log of the autonomous audit/cleanup/optimization pass. Each entry: what
 was checked, what was found, what changed (or why not), and build result.

@@ -153,7 +153,7 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     // Fire-and-forget invite email (failure must not block the response).
-    sendTeamInviteEmail(email, ownerU?.full_name || ownerU?.email || 'A RenderFast user', newRole, token).catch(() => {})
+    sendTeamInviteEmail(email, ownerU?.full_name || ownerU?.email || 'A RenderForAI user', newRole, token).catch(() => {})
 
     return NextResponse.json({ ok: true, invited: true }, { status: 201 })
   } catch (e) {

@@ -5,7 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import crypto from 'crypto'
 
-const UA = 'RenderFastBot/1.0 (+https://renderfast.vercel.app)'
+const UA = 'RenderForAIBot/1.0 (+https://renderforai.com)'
 const TIMEOUT_MS = 12_000
 
 // KV keeps a page this long as a safety net; real freshness is driven by

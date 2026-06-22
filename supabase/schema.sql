@@ -1,4 +1,4 @@
--- RenderFast — Supabase PostgreSQL Schema
+-- RenderForAI — Supabase PostgreSQL Schema
 -- Run this in your Supabase SQL editor to set up the database.
 
 -- ── Extensions ────────────────────────────────────────────────────────────────
@@ -113,7 +113,7 @@ as $$
         updated_at    = now();
 $$;
 
--- RenderFast-admin-owned platform settings (structured jsonb config, e.g. the
+-- RenderForAI-admin-owned platform settings (structured jsonb config, e.g. the
 -- bandwidth $/GB cost estimate). Never client-editable. See migration 012.
 create table if not exists public.platform_settings (
   key        text primary key,

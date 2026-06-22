@@ -30,9 +30,9 @@ export async function renderPage(url: string, isMobile = false): Promise<RenderR
   if (!configured(cf)) {
     const stubHtml = `<!DOCTYPE html>
 <html>
-<head><title>RenderFast (not configured) - ${url}</title><base href="${url}"></head>
+<head><title>RenderForAI (not configured) - ${url}</title><base href="${url}"></head>
 <body>
-  <h1>RenderFast — rendering not configured</h1>
+  <h1>RenderForAI — rendering not configured</h1>
   <p>URL: ${url}</p>
   <p>Set the Cloudflare account ID and API token to enable real rendering.</p>
 </body>

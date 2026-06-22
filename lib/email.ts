@@ -15,8 +15,8 @@ const resend = new Proxy({} as Resend, {
     return typeof value === 'function' ? value.bind(client) : value
   },
 })
-const FROM = 'RenderFast <noreply@renderfast.io>'
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://renderfast.io'
+const FROM = 'RenderForAI <noreply@renderforai.com>'
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? 'https://renderforai.com'
 const BRAND = '#2da01d'
 
 function emailOf(user: DbUser | { email: string } | string): string {
@@ -28,7 +28,7 @@ function shell(title: string, body: string) {
   return `<!doctype html><html><body style="margin:0;background:#f5f5f5;font-family:Arial,Helvetica,sans-serif">
   <div style="max-width:560px;margin:0 auto;padding:24px">
     <div style="font-size:24px;font-weight:800;color:#1a1a2e;margin-bottom:16px">
-      Render<span style="color:${BRAND}">Fast</span>
+      Render<span style="color:${BRAND}">ForAI</span>
     </div>
     <div style="background:#fff;border-radius:12px;padding:28px;border-top:4px solid ${BRAND}">
       <h1 style="font-size:20px;color:#111;margin-top:0">${title}</h1>
@@ -76,7 +76,7 @@ export async function sendDigestEmail(user: DbUser | { email: string; full_name?
        </div>
      </td>`
   const html = shell(
-    `Your RenderFast digest`,
+    `Your RenderForAI digest`,
     `<p>Hi ${name}, here's how your ${d.siteCount} site${d.siteCount === 1 ? '' : 's'} performed ${period}:</p>
      <table width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0"><tr>
        ${tile('Bot Visibility Score', d.healthScore != null ? `${d.healthScore}/100` : '—')}
@@ -91,26 +91,26 @@ export async function sendDigestEmail(user: DbUser | { email: string; full_name?
      <p style="color:#444;margin-top:12px">Search &amp; AI crawlers are seeing your fully-rendered content — keep it up.</p>
      ${button(`${APP_URL}/bot-visibility`, 'View full report')}`
   )
-  await send(user.email, `Your RenderFast digest — ${period}`, html)
+  await send(user.email, `Your RenderForAI digest — ${period}`, html)
 }
 
 // ── Team invite ──────────────────────────────────────────────────────────────
 export async function sendTeamInviteEmail(toEmail: string, inviterName: string, role: string, token: string) {
   const html = shell(
-    `You've been invited to a RenderFast team`,
-    `<p><strong>${inviterName}</strong> invited you to join their RenderFast account as a
+    `You've been invited to a RenderForAI team`,
+    `<p><strong>${inviterName}</strong> invited you to join their RenderForAI account as a
      <strong>${role}</strong>.</p>
      <p>Sign in (or sign up) with <strong>${toEmail}</strong>, then open your Team page to accept.</p>
      ${button(`${APP_URL}/team?invite=${token}`, 'Accept invitation')}
      <p style="font-size:12px;color:#999;margin-top:16px">If you weren't expecting this, you can ignore this email.</p>`
   )
-  await send(toEmail, `${inviterName} invited you to their RenderFast team`, html)
+  await send(toEmail, `${inviterName} invited you to their RenderForAI team`, html)
 }
 
 // ── Welcome ────────────────────────────────────────────────────────────────
 export async function sendWelcomeEmail(user: DbUser) {
   const html = shell(
-    'Welcome to RenderFast 🚀',
+    'Welcome to RenderForAI 🚀',
     `<p>Hi ${user.full_name ?? 'there'}, your account is ready.</p>
      <p><strong>Your API key:</strong></p>
      <pre style="background:#16213e;color:#e6e6e6;padding:12px;border-radius:8px;font-size:13px">${user.api_key ?? '—'}</pre>
@@ -122,7 +122,7 @@ export async function sendWelcomeEmail(user: DbUser) {
      </ol>
      ${button(`${APP_URL}/integration-wizard`, 'Start the wizard')}`
   )
-  await send(user.email, 'Welcome to RenderFast', html)
+  await send(user.email, 'Welcome to RenderForAI', html)
 }
 
 // ── Usage warning (80%) ──────────────────────────────────────────────────────
@@ -154,11 +154,11 @@ export async function sendUsageLimitEmail(
 // ── Account banned ───────────────────────────────────────────────────────────
 export async function sendBanEmail(user: DbUser | { email: string } | string, reason?: string) {
   const html = shell(
-    'Your RenderFast account has been suspended',
+    'Your RenderForAI account has been suspended',
     `<p>Your account has been suspended${reason ? ` for the following reason:</p><p style="color:#b00">${reason}</p>` : '.</p>'}
      <p>If you believe this is a mistake, please reply to this email to appeal.</p>`
   )
-  await send(emailOf(user), 'Your RenderFast account has been suspended', html)
+  await send(emailOf(user), 'Your RenderForAI account has been suspended', html)
 }
 
 // ── Render error alert ───────────────────────────────────────────────────────
@@ -170,5 +170,5 @@ export async function sendRenderErrorEmail(user: DbUser, url: string, error: str
      <p style="color:#b00">${error}</p>
      ${button(`${APP_URL}/render-history`, 'View render history')}`
   )
-  await send(user.email, 'RenderFast: repeated render failures', html)
+  await send(user.email, 'RenderForAI: repeated render failures', html)
 }

@@ -147,7 +147,7 @@ async function recache(user: Owner, items: Item[]) {
         status_code: statusCode,
         render_time_ms: renderTimeMs,
         cache_hit: false,
-        user_agent: 'RenderFast Recache Webhook',
+        user_agent: 'RenderForAI Recache Webhook',
         ip_address: null,
       })
 

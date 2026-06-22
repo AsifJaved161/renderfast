@@ -16,7 +16,7 @@ function isoDay(d: Date): string {
 // ── GET /api/bot-cost/:siteId?range=30d ──────────────────────────────────────
 // Per-bot bandwidth + estimated-cost summary for a site. Owner-gated. The rate
 // is returned read-only (for the client-facing "estimated cost avoided"
-// disclaimer); only RenderFast admins can CHANGE it (see /api/admin/bot-cost).
+// disclaimer); only RenderForAI admins can CHANGE it (see /api/admin/bot-cost).
 export async function GET(req: NextRequest, ctx: { params: Promise<{ siteId: string }> }) {
   try {
     const uid = req.headers.get('x-user-id')

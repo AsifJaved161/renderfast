@@ -1,6 +1,6 @@
-# RenderFast — Codebase Overview (for audit)
+# RenderForAI — Codebase Overview (for audit)
 
-> Single-file reference describing the entire RenderFast codebase so a reviewer
+> Single-file reference describing the entire RenderForAI codebase so a reviewer
 > (human or AI) can audit it for **bugs, security gaps, missing pieces,
 > dead code, and optimization opportunities**. Jump to
 > [§13 Audit focus areas](#13-audit-focus-areas) for the highest-value targets.
@@ -9,9 +9,9 @@
 
 ## 1. What the product is
 
-**RenderFast** is a **prerendering SaaS** — a Prerender.io / SEO4Ajax alternative.
-A customer points their site's bot traffic at RenderFast's reverse proxy. When a
-**search/AI/social crawler** requests a page, RenderFast serves a fully-rendered
+**RenderForAI** is a **prerendering SaaS** — a Prerender.io / SEO4Ajax alternative.
+A customer points their site's bot traffic at RenderForAI's reverse proxy. When a
+**search/AI/social crawler** requests a page, RenderForAI serves a fully-rendered
 (JavaScript-executed) HTML snapshot from cache so the bot indexes real content;
 human visitors are passed straight through to the origin. Rendering is done with
 **Cloudflare Browser Rendering**; snapshots are cached in **Cloudflare Workers KV**.

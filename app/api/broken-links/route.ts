@@ -6,7 +6,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-const UA = 'RenderFastBot/1.0 (+https://renderfast.vercel.app)'
+const UA = 'RenderForAIBot/1.0 (+https://renderforai.com)'
 const MAX_CHECK = 150 // URLs per scan (keeps within the function timeout)
 const CONCURRENCY = 12
 

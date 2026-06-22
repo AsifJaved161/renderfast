@@ -1,11 +1,11 @@
-# RenderFast — Free Test Deployment Guide
+# RenderForAI — Free Test Deployment Guide
 
 ## Step 1: Push to GitHub
 ```bash
 git init
 git add .
-git commit -m "Initial RenderFast commit"
-git remote add origin https://github.com/YOUR_USERNAME/renderfast.git
+git commit -m "Initial RenderForAI commit"
+git remote add origin https://github.com/YOUR_USERNAME/renderforai.git
 git push -u origin main
 ```
 
@@ -28,7 +28,7 @@ OPTION A (Free — dev fallback, no real rendering):
 
 OPTION B ($5/mo — Real rendering):
 1. Add Cloudflare Workers Paid plan ($5/mo)
-2. Create KV namespace: Workers & Pages → KV → Create namespace "renderfast-cache" → copy its ID
+2. Create KV namespace: Workers & Pages → KV → Create namespace "renderforai-cache" → copy its ID
 3. Create API token: Profile → API Tokens → Custom Token:
    Permissions: Workers KV Storage (Edit), Browser Rendering (Read)
 4. Copy Account ID (from any Cloudflare dashboard URL)
@@ -49,7 +49,7 @@ REQUIRED (app won't start / links break without these):
 NEXT_PUBLIC_SUPABASE_URL=          (from Supabase)
 NEXT_PUBLIC_SUPABASE_ANON_KEY=     (from Supabase)
 SUPABASE_SERVICE_ROLE_KEY=         (from Supabase)
-NEXT_PUBLIC_SITE_URL=              (your Vercel URL, e.g. https://renderfast.vercel.app)
+NEXT_PUBLIC_SITE_URL=              (your Vercel URL, e.g. https://renderforai.com)
 NEXT_PUBLIC_APP_URL=               (SAME value as NEXT_PUBLIC_SITE_URL — see note below)
 CRON_SECRET=                       (generate: openssl rand -hex 32)
 ```
@@ -57,7 +57,7 @@ CRON_SECRET=                       (generate: openssl rand -hex 32)
 > **Note:** The current code (billing + email helpers) reads `NEXT_PUBLIC_APP_URL`,
 > while newer config references `NEXT_PUBLIC_SITE_URL`. Until they're unified, set
 > **both** to your deployed URL so absolute links resolve correctly. If you skip
-> `NEXT_PUBLIC_APP_URL` it falls back to `https://renderfast.io` / `http://localhost:3000`.
+> `NEXT_PUBLIC_APP_URL` it falls back to `https://renderforai.com` / `http://localhost:3000`.
 
 OPTIONAL (leave empty for stub mode):
 ```
@@ -99,7 +99,7 @@ METHOD A — Add a domain + integrate (recommended):
 
 METHOD B — Attach a real domain to Vercel:
 1. Vercel → Project Settings → Domains → Add Domain
-2. Add e.g. "app.renderfast.io" or any domain you own
+2. Add e.g. "app.renderforai.com" or any domain you own
 3. Go to your domain registrar → add CNAME:
    Name: app → Value: cname.vercel-dns.com
 4. Wait 2-5 minutes → domain is live (free SSL auto-configured)

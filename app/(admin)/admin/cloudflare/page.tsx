@@ -176,7 +176,7 @@ export default function AdminCloudflarePage() {
         </Space>
       </Title>
       <Paragraph type="secondary">
-        How much of your Cloudflare quota RenderFast has consumed — Browser Rendering calls and
+        How much of your Cloudflare quota RenderForAI has consumed — Browser Rendering calls and
         Workers KV — and how much is left. Set your plan’s limits below; everything is computed from
         our own records (no per-client Cloudflare calls), so it stays accurate at any scale.
       </Paragraph>

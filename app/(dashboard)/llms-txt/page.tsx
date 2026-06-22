@@ -36,7 +36,7 @@ interface LlmsData {
   url: string
 }
 
-// llms.txt — a low-friction "it's already done for you" page. RenderFast
+// llms.txt — a low-friction "it's already done for you" page. RenderForAI
 // auto-generates and serves the file; the only action a client needs is an
 // optional "Regenerate now". Manual editing is tucked away under Advanced.
 export default function LlmsTxtPage() {

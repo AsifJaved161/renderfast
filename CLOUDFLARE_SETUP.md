@@ -1,4 +1,4 @@
-# Cloudflare Setup — RenderFast
+# Cloudflare Setup — RenderForAI
 
 Project iske **bina bhi chalta hai** (renderer ek dev-stub HTML deta hai, cache no-op).
 Neeche ke **3 env vars set karte hi** real rendering + KV cache + Render Diagnostics
@@ -29,7 +29,7 @@ Neeche ke **3 env vars set karte hi** real rendering + KV cache + Render Diagnos
 ## Step 2 — KV Namespace banao (cache)
 
 1. Dashboard → **Storage & Databases → KV** → **Create namespace**.
-2. Naam koi bhi rakho, e.g. `renderfast-cache`.
+2. Naam koi bhi rakho, e.g. `renderforai-cache`.
 3. Ban jane ke baad uska **Namespace ID** copy karo → `CLOUDFLARE_KV_NAMESPACE_ID`.
 
 ## Step 3 — API Token banao

@@ -75,7 +75,7 @@ export default function AdminLoginPage() {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 800, fontSize: 18, color: '#fff' }}>
             <ThunderboltFilled style={{ color: BRAND }} />
-            Render<span style={{ color: BRAND }}>Fast</span>
+            Render<span style={{ color: BRAND }}>ForAI</span>
           </span>
           <span
             style={{
@@ -112,7 +112,7 @@ export default function AdminLoginPage() {
           >
             <Input
               prefix={<MailOutlined style={{ color: '#666' }} />}
-              placeholder="admin@renderfast.io"
+              placeholder="admin@renderforai.com"
               style={{ background: '#0f0f0f', borderColor: '#2a2a2a', color: '#fff' }}
             />
           </Form.Item>

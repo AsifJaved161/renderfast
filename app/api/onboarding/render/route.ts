@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
         status_code: statusCode,
         render_time_ms: renderTimeMs,
         cache_hit: false,
-        user_agent: 'RenderFast Onboarding',
+        user_agent: 'RenderForAI Onboarding',
         ip_address: null,
       })
       await supabaseAdmin.from('users').update({ render_count: (user?.render_count ?? site.render_count ?? 0) + 1 }).eq('id', uid)

@@ -10,7 +10,7 @@
 //
 // Data sources reuse the same pattern as the diagnostics re-scan: known rendered
 // URLs come from cache_entries, falling back to caching_queue if the cache is
-// empty. NOTE: RenderFast does not currently persist page <title>/meta text
+// empty. NOTE: RenderForAI does not currently persist page <title>/meta text
 // anywhere (render_diagnostics only records WHETHER those tags exist, not their
 // content), so titles are derived from the URL slug and descriptions are omitted
 // when absent. The shape below already reads a `title`/`description` column if
@@ -100,7 +100,7 @@ export async function generateLlmsTxt(siteId: string): Promise<string> {
 
   const domain = (site?.domain ?? '').replace(/^www\./, '')
   const siteName = (site?.name && site.name.trim()) || domain || 'Website'
-  const siteDescription = `Pages from ${domain || siteName}, served pre-rendered by RenderFast.`
+  const siteDescription = `Pages from ${domain || siteName}, served pre-rendered by RenderForAI.`
 
   // ── Known rendered URLs: cache_entries first, caching_queue as fallback ─────
   // (same source pattern the diagnostics re-scan uses). Pull a few × the cap so

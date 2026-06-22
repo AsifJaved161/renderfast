@@ -10,11 +10,11 @@ const FONT_STACK =
 
 export const metadata: Metadata = {
   title: {
-    template: '%s | RenderFast',
-    default: 'RenderFast — SEO Rendering for SPAs',
+    template: '%s | RenderForAI',
+    default: 'RenderForAI — SEO Rendering for SPAs',
   },
   description:
-    'RenderFast prerenders your single-page app for search engines and AI bots — faster indexing, better SEO, zero infrastructure.',
+    'RenderForAI prerenders your single-page app for search engines and AI bots — faster indexing, better SEO, zero infrastructure.',
   icons: { icon: '/favicon.ico' },
 }
 

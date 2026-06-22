@@ -48,7 +48,7 @@ export default function AdminSidebar() {
       {/* Logo */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '18px 20px', fontWeight: 800, fontSize: 18, color: '#1f2937' }}>
         <ThunderboltFilled style={{ color: BRAND }} />
-        Render<span style={{ color: BRAND }}>Fast</span>
+        Render<span style={{ color: BRAND }}>ForAI</span>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' }}>

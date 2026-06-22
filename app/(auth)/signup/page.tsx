@@ -256,10 +256,10 @@ function BrandPanel() {
       }}
     >
       <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 24 }}>
-        Render<span style={{ color: '#2da01d' }}>Fast</span>
+        Render<span style={{ color: '#2da01d' }}>ForAI</span>
       </div>
       <h2 style={{ color: '#fff', fontSize: 26, fontWeight: 700, lineHeight: 1.3, marginBottom: 40 }}>
-        Join 10,000+ websites already using RenderFast
+        Join 10,000+ websites already using RenderForAI
       </h2>
       <div style={{ display: 'flex', gap: 32 }}>
         {stats.map((s, i) => (

@@ -71,7 +71,7 @@ export default function LoginPage() {
       >
         <div style={{ width: '100%', maxWidth: 400 }}>
           <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Welcome back</h1>
-          <p style={{ color: '#888', marginBottom: 24 }}>Sign in to your RenderFast account</p>
+          <p style={{ color: '#888', marginBottom: 24 }}>Sign in to your RenderForAI account</p>
 
           {error && (
             <Alert
@@ -181,7 +181,7 @@ function BrandPanel() {
       }}
     >
       <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 24 }}>
-        Render<span style={{ color: '#2da01d' }}>Fast</span>
+        Render<span style={{ color: '#2da01d' }}>ForAI</span>
       </div>
       <h2 style={{ color: '#fff', fontSize: 26, fontWeight: 700, lineHeight: 1.3, marginBottom: 32 }}>
         Make your SPA visible to every search engine

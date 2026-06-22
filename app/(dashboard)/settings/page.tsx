@@ -222,7 +222,7 @@ function generateLlmsTxt(s: SettingsState) {
   const lines = [
     '# llms.txt',
     '',
-    '> Rendering powered by RenderFast',
+    '> Rendering powered by RenderForAI',
     '',
     s.serveMarkdown ? 'Markdown served to AI bots: enabled' : 'Markdown served to AI bots: disabled',
     '',

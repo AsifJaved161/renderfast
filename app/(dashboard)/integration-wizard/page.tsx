@@ -33,7 +33,7 @@ const BRAND = '#2da01d'
 const { Text, Title } = Typography
 
 // Where integration snippets send crawler traffic.
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://renderfast.vercel.app'
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://renderforai.com'
 
 type Method = 'wordpress' | 'worker' | 'middleware' | 'script' | 'nginx'
 
@@ -255,10 +255,10 @@ map $http_user_agent $rf_is_bot {
 
 # ── inside your server {} ──
 location / {
-  if ($rf_is_bot) { rewrite ^ /_renderfast last; }
+  if ($rf_is_bot) { rewrite ^ /_renderforai last; }
   try_files $uri $uri/ /index.html;   # ← your normal config
 }
-location /_renderfast {
+location /_renderforai {
   internal;
   proxy_set_header X-Prerender-Token ${key || 'YOUR_API_KEY'};
   proxy_set_header User-Agent $http_user_agent;
@@ -349,13 +349,13 @@ function StepMethod({
             showIcon
             style={{ marginBottom: 16 }}
             message="Easiest option — no code"
-            description="Install the plugin, log in with your RenderFast email & password inside WordPress, and this domain is connected automatically. Crawlers get prerendered HTML; visitors are untouched."
+            description="Install the plugin, log in with your RenderForAI email & password inside WordPress, and this domain is connected automatically. Crawlers get prerendered HTML; visitors are untouched."
           />
           <Button
             type="primary"
             size="large"
             icon={<DownloadOutlined />}
-            href={`${APP_URL}/renderfast.zip`}
+            href={`${APP_URL}/renderforai.zip`}
             style={{ background: BRAND, borderColor: BRAND, marginBottom: 16 }}
           >
             Download WordPress plugin
@@ -363,13 +363,13 @@ function StepMethod({
           <ol style={{ paddingLeft: 20, color: '#374151', lineHeight: 2 }}>
             <li>
               WordPress Admin → <Text strong>Plugins → Add New → Upload Plugin</Text> → choose{' '}
-              <Text code>renderfast.zip</Text> → Install → Activate.
+              <Text code>renderforai.zip</Text> → Install → Activate.
             </li>
             <li>
-              Open the new <Text strong>RenderFast</Text> menu item.
+              Open the new <Text strong>RenderForAI</Text> menu item.
             </li>
             <li>
-              Click <Text strong>Log in &amp; connect</Text> and enter your RenderFast email &amp;
+              Click <Text strong>Log in &amp; connect</Text> and enter your RenderForAI email &amp;
               password. (No account? Use the <Text strong>Sign up</Text> button there.)
             </li>
             <li>Done — press “Test prerendering” to confirm it’s live.</li>
@@ -382,7 +382,7 @@ function StepMethod({
             showIcon
             style={{ marginBottom: 4 }}
             message="How it works"
-            description="The snippet runs on your server/edge, detects crawler User-Agents, and serves them prerendered HTML from RenderFast. Real visitors are passed straight through to your site — zero impact on them."
+            description="The snippet runs on your server/edge, detects crawler User-Agents, and serves them prerendered HTML from RenderForAI. Real visitors are passed straight through to your site — zero impact on them."
           />
           <CodeBlock title={filename} code={snippet} />
         </>
