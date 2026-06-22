@@ -173,6 +173,29 @@ as $$
 $$;
 revoke all on function public.admin_cloudflare_usage() from public, anon, authenticated;
 
+-- Team / multi-user accounts — grants other users role-based access to an
+-- owner's account (sites.user_id ownership is unchanged). See migration 016.
+create table if not exists public.team_members (
+  id             uuid primary key default gen_random_uuid(),
+  owner_user_id  uuid not null references public.users(id) on delete cascade,
+  member_user_id uuid references public.users(id) on delete cascade,
+  invited_email  text not null,
+  role           text not null default 'member' check (role in ('admin', 'member', 'viewer')),
+  status         text not null default 'pending' check (status in ('pending', 'active')),
+  invite_token   text,
+  invited_by     uuid references public.users(id),
+  created_at     timestamptz not null default now(),
+  accepted_at    timestamptz,
+  unique (owner_user_id, invited_email)
+);
+create index if not exists idx_team_members_owner  on public.team_members (owner_user_id);
+create index if not exists idx_team_members_member on public.team_members (member_user_id) where member_user_id is not null;
+create index if not exists idx_team_members_token  on public.team_members (invite_token) where invite_token is not null;
+alter table public.team_members enable row level security;
+drop policy if exists "team_members_visible" on public.team_members;
+create policy "team_members_visible" on public.team_members
+  for all using (owner_user_id = auth.uid() or member_user_id = auth.uid());
+
 -- ══════════════════════════════════════════════════════════════════════════════
 -- 5. SITEMAPS
 -- ══════════════════════════════════════════════════════════════════════════════
