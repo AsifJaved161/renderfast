@@ -46,18 +46,21 @@ export default function AdminDashboardPage() {
   const [logs, setLogs] = useState<any[]>([])
 
   useEffect(() => {
-    ;(async () => {
-      try {
-        const [s, l] = await Promise.all([
-          fetch('/api/admin/stats').then((r) => r.json()),
-          fetch('/api/admin/logs?limit=10').then((r) => r.json()),
-        ])
+    // Load stats and logs INDEPENDENTLY — a failure in one must not blank out the
+    // other (previously a single Promise.all without a catch meant a failing
+    // /api/admin/logs killed the whole dashboard with "Failed to load stats").
+    fetch('/api/admin/stats')
+      .then((r) => r.json())
+      .then((s) => {
         if (!s.error) setStats(s)
-        setLogs(l.logs ?? [])
-      } finally {
-        setLoading(false)
-      }
-    })()
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+
+    fetch('/api/admin/logs?limit=10')
+      .then((r) => r.json())
+      .then((l) => setLogs(l.logs ?? []))
+      .catch(() => setLogs([]))
   }, [])
 
   function downloadReport() {
