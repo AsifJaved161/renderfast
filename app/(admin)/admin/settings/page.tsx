@@ -53,6 +53,7 @@ interface OpsValues {
 }
 interface SettingsData {
   cloudflare: CfField[]
+  google: { set: boolean; source: string; preview: string }
   ops: {
     values: OpsValues
     defaults: OpsValues
@@ -100,6 +101,26 @@ export default function AdminSettingsPage() {
   const [brurl, setBrurl] = useState('')
   // Ops form state
   const [ops, setOps] = useState<OpsValues>({ maxRescanUrls: 15, rescanConcurrency: 5, cacheTtlSeconds: 86400, sitemapMaxUrls: 500, renderTimeoutMs: 30000, queueThrottleMs: 1200, hardCacheTtlDays: 30, blockResources: true })
+  // Google API key (Core Web Vitals) — only sent when a new value is typed.
+  const [googleKey, setGoogleKey] = useState('')
+
+  async function saveGoogle() {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: { google_api_key: googleKey } }),
+      })
+      if (res.ok) {
+        message.success('Google API key saved')
+        setGoogleKey('')
+        load()
+      } else message.error('Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -343,6 +364,29 @@ export default function AdminSettingsPage() {
             </Row>
             <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={saveOps} style={{ background: BRAND, borderColor: BRAND, marginTop: 16 }}>
               Save limits
+            </Button>
+          </Card>
+
+          {/* ── Core Web Vitals (Google CrUX API key) ───────────────────────── */}
+          <Card title={<Space><ExperimentOutlined /> Core Web Vitals (Google API key)</Space>} style={{ marginTop: 16 }}>
+            <Paragraph type="secondary" style={{ marginTop: 0 }}>
+              Enables real-user LCP/CLS/INP in diagnostics via the Chrome UX Report API. Create a key
+              in Google Cloud with the <b>Chrome UX Report API</b> enabled.
+            </Paragraph>
+            <label>
+              <Space>
+                API key <SourceTag source={data?.google.source ?? 'unset'} />
+                {data?.google.preview && <Text type="secondary" style={{ fontSize: 12 }}>current: {data.google.preview}</Text>}
+              </Space>
+            </label>
+            <Input.Password
+              value={googleKey}
+              onChange={(e) => setGoogleKey(e.target.value)}
+              placeholder={data?.google.set ? 'leave blank to keep current' : 'paste Google API key'}
+              style={{ marginTop: 4, marginBottom: 12 }}
+            />
+            <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={saveGoogle} disabled={!googleKey} style={{ background: BRAND, borderColor: BRAND }}>
+              Save key
             </Button>
           </Card>
         </Col>

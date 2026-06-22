@@ -94,8 +94,19 @@ export async function GET() {
       head('users'),
     ])
 
+    // Google API key (Chrome UX Report — Core Web Vitals). Masked like a secret.
+    const gEnv = ENV_OF[SETTING_KEYS.googleApiKey] ? env(ENV_OF[SETTING_KEYS.googleApiKey]) : env('GOOGLE_API_KEY')
+    const gDb = db[SETTING_KEYS.googleApiKey] ?? ''
+    const gEff = gDb || gEnv
+    const google = {
+      set: !!gEff,
+      source: gDb ? 'db' : gEnv ? 'env' : 'unset',
+      preview: gEff ? mask(gEff) : '',
+    }
+
     return NextResponse.json({
       cloudflare,
+      google,
       ops: {
         values: ops,
         defaults: OPS_DEFAULTS,
