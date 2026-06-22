@@ -15,6 +15,8 @@ import {
   Typography,
   Divider,
   Skeleton,
+  Switch,
+  Tooltip,
   message,
 } from 'antd'
 import {
@@ -26,6 +28,7 @@ import {
   CloseCircleFilled,
   ExperimentOutlined,
   SaveOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons'
 
 const BRAND = '#2da01d'
@@ -38,11 +41,21 @@ interface CfField {
   value: string
   preview: string
 }
+interface OpsValues {
+  maxRescanUrls: number
+  rescanConcurrency: number
+  cacheTtlSeconds: number
+  sitemapMaxUrls: number
+  renderTimeoutMs: number
+  queueThrottleMs: number
+  hardCacheTtlDays: number
+  blockResources: boolean
+}
 interface SettingsData {
   cloudflare: CfField[]
   ops: {
-    values: { maxRescanUrls: number; rescanConcurrency: number; cacheTtlSeconds: number; sitemapMaxUrls: number; renderTimeoutMs: number }
-    defaults: { maxRescanUrls: number; rescanConcurrency: number; cacheTtlSeconds: number; sitemapMaxUrls: number; renderTimeoutMs: number }
+    values: OpsValues
+    defaults: OpsValues
     sources: Record<string, string>
   }
   usage: {
@@ -86,7 +99,7 @@ export default function AdminSettingsPage() {
   const [kv, setKv] = useState('')
   const [brurl, setBrurl] = useState('')
   // Ops form state
-  const [ops, setOps] = useState({ maxRescanUrls: 15, rescanConcurrency: 5, cacheTtlSeconds: 86400, sitemapMaxUrls: 500, renderTimeoutMs: 30000 })
+  const [ops, setOps] = useState<OpsValues>({ maxRescanUrls: 15, rescanConcurrency: 5, cacheTtlSeconds: 86400, sitemapMaxUrls: 500, renderTimeoutMs: 30000, queueThrottleMs: 1200, hardCacheTtlDays: 30, blockResources: true })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -167,6 +180,9 @@ export default function AdminSettingsPage() {
         cache_ttl_seconds: String(ops.cacheTtlSeconds),
         sitemap_max_urls: String(ops.sitemapMaxUrls),
         render_timeout_ms: String(ops.renderTimeoutMs),
+        queue_throttle_ms: String(ops.queueThrottleMs),
+        hard_cache_ttl_days: String(ops.hardCacheTtlDays),
+        block_resources: ops.blockResources ? '1' : '0',
       }
       const res = await fetch('/api/admin/settings', {
         method: 'PATCH',
@@ -291,6 +307,38 @@ export default function AdminSettingsPage() {
                 <Text>Render timeout (ms)</Text>
                 <InputNumber min={5000} max={120000} step={1000} value={ops.renderTimeoutMs} onChange={(v) => setOps({ ...ops, renderTimeoutMs: v ?? 30000 })} style={{ width: '100%' }} />
                 <Text type="secondary" style={{ fontSize: 12 }}>{Math.round(ops.renderTimeoutMs / 1000)}s · default {data?.ops.defaults.renderTimeoutMs}</Text>
+              </Col>
+              <Col xs={12}>
+                <Space size={4}>
+                  <Text>Queue throttle (ms)</Text>
+                  <Tooltip title="Pause between renders while draining the queue. Higher = gentler on Cloudflare's rate limit (raise it if you see rate-limit errors).">
+                    <InfoCircleOutlined style={{ color: '#bfbfbf', fontSize: 12 }} />
+                  </Tooltip>
+                </Space>
+                <InputNumber min={0} max={10000} step={100} value={ops.queueThrottleMs} onChange={(v) => setOps({ ...ops, queueThrottleMs: v ?? 1200 })} style={{ width: '100%' }} />
+                <Text type="secondary" style={{ fontSize: 12 }}>default {data?.ops.defaults.queueThrottleMs}</Text>
+              </Col>
+              <Col xs={12}>
+                <Space size={4}>
+                  <Text>Hard cache TTL (days)</Text>
+                  <Tooltip title="How long a rendered page stays in Workers KV. Freshness is handled separately by change-detection, so this is mainly a storage-retention / cleanup bound.">
+                    <InfoCircleOutlined style={{ color: '#bfbfbf', fontSize: 12 }} />
+                  </Tooltip>
+                </Space>
+                <InputNumber min={1} max={365} value={ops.hardCacheTtlDays} onChange={(v) => setOps({ ...ops, hardCacheTtlDays: v ?? 30 })} style={{ width: '100%' }} />
+                <Text type="secondary" style={{ fontSize: 12 }}>default {data?.ops.defaults.hardCacheTtlDays}</Text>
+              </Col>
+              <Col xs={12}>
+                <Space size={4}>
+                  <Text>Block heavy resources</Text>
+                  <Tooltip title="Skip downloading images/fonts/media during render → faster, cheaper renders. Disable if a site's content depends on them (e.g. image lazy-loading).">
+                    <InfoCircleOutlined style={{ color: '#bfbfbf', fontSize: 12 }} />
+                  </Tooltip>
+                </Space>
+                <div style={{ marginTop: 4 }}>
+                  <Switch checked={ops.blockResources} onChange={(v) => setOps({ ...ops, blockResources: v })} checkedChildren="On" unCheckedChildren="Off" />
+                  <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>images · fonts · media</Text>
+                </div>
               </Col>
             </Row>
             <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={saveOps} style={{ background: BRAND, borderColor: BRAND, marginTop: 16 }}>

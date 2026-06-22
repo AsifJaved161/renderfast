@@ -9,13 +9,10 @@ import { setCachedPage } from '@/lib/kv'
 import { renderPage } from '@/lib/renderer'
 import { getOpsConfig } from '@/lib/app-config'
 import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
-import { captureValidators, HARD_CACHE_TTL } from '@/lib/revalidate'
+import { captureValidators } from '@/lib/revalidate'
 import { supabaseAdmin } from '@/lib/supabase'
 
 const BATCH = 5
-// Gentle pacing between renders so we stay under Cloudflare Browser Rendering's
-// rate limit (especially on the free tier).
-const THROTTLE_MS = 1200
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const isRateLimited = (err?: string) => !!err && /rate.?limit/i.test(err)
@@ -32,7 +29,10 @@ export async function drainQueue(
 ): Promise<{ processed: number; failed: number; rateLimited: boolean }> {
   const maxUrls = opts.maxUrls ?? 60
   const deadline = Date.now() + (opts.deadlineMs ?? 45_000)
-  const { cacheTtlSeconds } = await getOpsConfig()
+  // Admin-configurable: pacing between renders (Cloudflare rate limit) + how long
+  // KV keeps a page (freshness is driven by change-detection, not this TTL).
+  const { cacheTtlSeconds, queueThrottleMs, hardCacheTtlDays } = await getOpsConfig()
+  const hardTtlSeconds = hardCacheTtlDays * 86400
 
   let processed = 0
   let failed = 0
@@ -114,12 +114,12 @@ export async function drainQueue(
             attempts: (item.attempts ?? 0) + 1,
           })
           .eq('id', item.id)
-        await sleep(THROTTLE_MS)
+        await sleep(queueThrottleMs)
         continue
       }
 
-      // KV persists (HARD_CACHE_TTL); freshness is driven by change-detection.
-      await setCachedPage(domain, renderUrl, result.html, HARD_CACHE_TTL)
+      // KV persists for the hard TTL; freshness is driven by change-detection.
+      await setCachedPage(domain, renderUrl, result.html, hardTtlSeconds)
       const v = await captureValidators(renderUrl)
       await supabaseAdmin.from('cache_entries').upsert(
         {
@@ -143,7 +143,7 @@ export async function drainQueue(
         .eq('id', item.id)
 
       processed++
-      await sleep(THROTTLE_MS) // pace renders to respect Cloudflare's rate limit
+      await sleep(queueThrottleMs) // pace renders to respect Cloudflare's rate limit
     }
   }
 

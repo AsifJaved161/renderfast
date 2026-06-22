@@ -18,6 +18,9 @@ export const SETTING_KEYS = {
   cacheTtlSeconds: 'cache_ttl_seconds',
   sitemapMaxUrls: 'sitemap_max_urls',
   renderTimeoutMs: 'render_timeout_ms',
+  queueThrottleMs: 'queue_throttle_ms',
+  hardCacheTtlDays: 'hard_cache_ttl_days',
+  blockResources: 'block_resources',
 } as const
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS]
@@ -68,6 +71,13 @@ async function int(key: SettingKey, def: number): Promise<number> {
   return Number.isFinite(n) && n > 0 ? n : def
 }
 
+async function bool(key: SettingKey, def: boolean): Promise<boolean> {
+  const db = await loadDb()
+  const v = db[key]
+  if (v == null || v === '') return def
+  return v === '1' || v.toLowerCase() === 'true'
+}
+
 // ── Cloudflare credentials ───────────────────────────────────────────────────
 export interface CloudflareConfig {
   accountId: string
@@ -92,6 +102,9 @@ export interface OpsConfig {
   cacheTtlSeconds: number
   sitemapMaxUrls: number
   renderTimeoutMs: number
+  queueThrottleMs: number
+  hardCacheTtlDays: number
+  blockResources: boolean
 }
 
 export const OPS_DEFAULTS: OpsConfig = {
@@ -100,6 +113,9 @@ export const OPS_DEFAULTS: OpsConfig = {
   cacheTtlSeconds: 86400,
   sitemapMaxUrls: 500,
   renderTimeoutMs: 30000,
+  queueThrottleMs: 1200,
+  hardCacheTtlDays: 30,
+  blockResources: true,
 }
 
 export async function getOpsConfig(): Promise<OpsConfig> {
@@ -109,5 +125,8 @@ export async function getOpsConfig(): Promise<OpsConfig> {
     cacheTtlSeconds: await int(SETTING_KEYS.cacheTtlSeconds, OPS_DEFAULTS.cacheTtlSeconds),
     sitemapMaxUrls: await int(SETTING_KEYS.sitemapMaxUrls, OPS_DEFAULTS.sitemapMaxUrls),
     renderTimeoutMs: await int(SETTING_KEYS.renderTimeoutMs, OPS_DEFAULTS.renderTimeoutMs),
+    queueThrottleMs: await int(SETTING_KEYS.queueThrottleMs, OPS_DEFAULTS.queueThrottleMs),
+    hardCacheTtlDays: await int(SETTING_KEYS.hardCacheTtlDays, OPS_DEFAULTS.hardCacheTtlDays),
+    blockResources: await bool(SETTING_KEYS.blockResources, OPS_DEFAULTS.blockResources),
   }
 }

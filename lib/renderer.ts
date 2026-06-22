@@ -44,8 +44,9 @@ export async function renderPage(url: string, isMobile = false): Promise<RenderR
     cf.browserRenderingUrl ||
     `https://api.cloudflare.com/client/v4/accounts/${cf.accountId}/browser-rendering/content`
 
-  // Admin-configurable navigation timeout (cached; shares the CF-config DB read).
-  const { renderTimeoutMs } = await getOpsConfig()
+  // Admin-configurable navigation timeout + resource blocking (cached; shares
+  // the CF-config DB read).
+  const { renderTimeoutMs, blockResources } = await getOpsConfig()
 
   const start = Date.now()
   try {
@@ -63,7 +64,9 @@ export async function renderPage(url: string, isMobile = false): Promise<RenderR
         // networkidle0 — many real pages keep analytics/ads/websocket sockets
         // open and would otherwise hang until timeout. 30s cap fails fast.
         gotoOptions: { waitUntil: 'networkidle2', timeout: renderTimeoutMs },
-        rejectResourceTypes: ['image', 'font', 'media'],
+        // Skip downloading images/fonts/media → faster, cheaper renders. Admin
+        // can disable if a site needs them (e.g. lazy-load depends on images).
+        ...(blockResources ? { rejectResourceTypes: ['image', 'font', 'media'] } : {}),
         viewport: isMobile
           ? { width: 390, height: 844, isMobile: true }
           : { width: 1280, height: 800 },

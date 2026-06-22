@@ -105,6 +105,9 @@ export async function GET() {
           cache_ttl_seconds: db[SETTING_KEYS.cacheTtlSeconds] ? 'db' : 'default',
           sitemap_max_urls: db[SETTING_KEYS.sitemapMaxUrls] ? 'db' : 'default',
           render_timeout_ms: db[SETTING_KEYS.renderTimeoutMs] ? 'db' : 'default',
+          queue_throttle_ms: db[SETTING_KEYS.queueThrottleMs] ? 'db' : 'default',
+          hard_cache_ttl_days: db[SETTING_KEYS.hardCacheTtlDays] ? 'db' : 'default',
+          block_resources: db[SETTING_KEYS.blockResources] ? 'db' : 'default',
         },
       },
       usage: {

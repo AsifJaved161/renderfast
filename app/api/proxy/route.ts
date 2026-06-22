@@ -5,7 +5,7 @@ import { renderPage, htmlToMarkdown } from '@/lib/renderer'
 import { captureDiagnostics } from '@/lib/diagnostics'
 import { getOpsConfig } from '@/lib/app-config'
 import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
-import { captureValidators, originChanged, fingerprint, HARD_CACHE_TTL as HARD_TTL } from '@/lib/revalidate'
+import { captureValidators, originChanged, fingerprint } from '@/lib/revalidate'
 import { getServableLlmsTxt } from '@/lib/llms-txt'
 import { supabaseAdmin } from '@/lib/supabase'
 
@@ -179,8 +179,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(targetUrl, 302)
   }
 
-  const { cacheTtlSeconds } = await getOpsConfig()
-  await setCachedPage(domain, renderUrl, html, HARD_TTL) // persist; freshness via revalidation
+  const { cacheTtlSeconds, hardCacheTtlDays } = await getOpsConfig()
+  await setCachedPage(domain, renderUrl, html, hardCacheTtlDays * 86400) // persist; freshness via revalidation
   await persistRender(owner, domain, renderParsed, html, renderTimeMs, statusCode, cacheTtlSeconds)
   const body = toBody(html, wantsMarkdown)
   logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, false, renderTimeMs, statusCode)
@@ -352,7 +352,8 @@ async function revalidateChanged(domain: string, url: string, cachedHtml: string
     // Not due for a check yet → nothing to do.
     if (data.expires_at && new Date(data.expires_at) > new Date()) return
 
-    const { cacheTtlSeconds } = await getOpsConfig()
+    const { cacheTtlSeconds, hardCacheTtlDays } = await getOpsConfig()
+    const hardTtl = hardCacheTtlDays * 86400
     const nextWindow = new Date(Date.now() + cacheTtlSeconds * 1000).toISOString()
     const changed = await originChanged(url, {
       etag: data.etag,
@@ -363,7 +364,7 @@ async function revalidateChanged(domain: string, url: string, cachedHtml: string
     // Unchanged (or origin unreachable) → DON'T render. Refresh KV lifetime +
     // the next check window, keep serving the existing cache.
     if (changed === false || changed === null) {
-      await setCachedPage(domain, url, cachedHtml, HARD_TTL)
+      await setCachedPage(domain, url, cachedHtml, hardTtl)
       await supabaseAdmin.from('cache_entries').update({ expires_at: nextWindow }).eq('url', url)
       return
     }
@@ -371,7 +372,7 @@ async function revalidateChanged(domain: string, url: string, cachedHtml: string
     // Content changed → re-render and refresh everything.
     const { html, error, renderTimeMs, statusCode } = await renderPage(url)
     if (!error && html) {
-      await setCachedPage(domain, url, html, HARD_TTL)
+      await setCachedPage(domain, url, html, hardTtl)
       const v = await captureValidators(url)
       await supabaseAdmin
         .from('cache_entries')
