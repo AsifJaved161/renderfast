@@ -34,6 +34,7 @@ import {
   CreditCardOutlined,
   LockOutlined,
   SettingOutlined,
+  TeamOutlined,
   RocketOutlined,
   UserOutlined,
   LogoutOutlined,
@@ -41,6 +42,7 @@ import {
   MenuUnfoldOutlined,
 } from '@ant-design/icons'
 import { DashboardContext } from '@/lib/dashboard-context'
+import { AccountSwitcher } from '@/components/dashboard/AccountSwitcher'
 import { PLAN_LIMITS } from '@/lib/constants'
 import type { DbUser, DbSite, Plan } from '@/lib/supabase'
 
@@ -126,6 +128,7 @@ const NAV: NavGroup[] = [
     title: 'ACCOUNT',
     items: [
       { key: '/billing', label: 'Billing', icon: <CreditCardOutlined />, hint: 'Your plan & payment details' },
+      { key: '/team', label: 'Team', icon: <TeamOutlined />, hint: 'Invite & manage team members' },
       { key: '/security', label: 'Security', icon: <LockOutlined />, hint: 'API keys & access settings' },
       { key: '/settings', label: 'Settings', icon: <SettingOutlined />, hint: 'Account preferences' },
       { key: '/integration-wizard', label: 'Integration Guide', icon: <RocketOutlined />, hint: 'Connect RenderFast to your site' },
@@ -434,6 +437,9 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
               <div style={{ fontSize: 16, fontWeight: 600, color: c.title }}>{pageTitle(pathname)}</div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                {/* Account switcher (only shows if the user belongs to >1 account) */}
+                <AccountSwitcher />
+
                 {/* Theme toggle */}
                 <Tooltip title={mode === 'dark' ? 'Switch to light' : 'Switch to dark'}>
                   <Button
