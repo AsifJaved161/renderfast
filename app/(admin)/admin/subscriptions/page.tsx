@@ -297,13 +297,16 @@ function RefundModal({
 }) {
   const [amount, setAmount] = useState<number>(0)
   useEffect(() => {
-    if (sub) setAmount(sub.amount)
+    if (sub) setAmount(0)
   }, [sub])
   if (!sub) return null
   return (
     <Modal open title="Issue Refund" onCancel={onClose} onOk={() => onConfirm(sub, amount)} okText="Refund" okButtonProps={{ danger: true }}>
       <Form layout="vertical">
-        <Form.Item label="Refund amount ($)" help="Refunds the latest invoice for this subscription.">
+        <Form.Item
+          label="Refund amount ($)"
+          help="Leave 0 to refund the full latest invoice, or enter an amount for a partial refund."
+        >
           <InputNumber min={0} value={amount} onChange={(v) => setAmount(v ?? 0)} style={{ width: '100%' }} />
         </Form.Item>
       </Form>

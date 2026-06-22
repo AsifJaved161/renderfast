@@ -7,6 +7,19 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
+// Normalize any billing cadence to a per-month figure so the table ("$X/mo")
+// and the MRR/ARR summary are correct even for annual/weekly plans.
+function monthlyAmount(
+  raw: number,
+  recurring?: { interval?: string; interval_count?: number | null } | null
+): number {
+  if (!recurring) return raw
+  const perInterval = raw / (recurring.interval_count || 1)
+  const factor =
+    recurring.interval === 'year' ? 1 / 12 : recurring.interval === 'week' ? 52 / 12 : recurring.interval === 'day' ? 365 / 12 : 1
+  return Math.round(perInterval * factor * 100) / 100
+}
+
 export async function GET(req: NextRequest) {
   try {
     await requireAdmin()
@@ -40,7 +53,7 @@ export async function GET(req: NextRequest) {
           user_email: emailByCustomer.get(s.customer as string) ?? null,
           plan: plan ?? 'unknown',
           status: s.status,
-          amount: (item?.price.unit_amount ?? 0) / 100,
+          amount: monthlyAmount((item?.price.unit_amount ?? 0) / 100, item?.price.recurring),
           next_billing: s.current_period_end
             ? new Date(s.current_period_end * 1000).toISOString()
             : null,

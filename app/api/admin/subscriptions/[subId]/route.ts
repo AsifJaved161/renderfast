@@ -13,7 +13,7 @@ type Params = { params: Promise<{ subId: string }> }
 export async function PATCH(req: NextRequest, { params }: Params) {
   try {
     const admin = await requireAdmin()
-    const { action, plan } = await req.json().catch(() => ({}))
+    const { action, plan, amount } = await req.json().catch(() => ({}))
     const { subId } = await params
     const ip = req.headers.get('x-forwarded-for')
 
@@ -55,8 +55,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       if (!invoice?.payment_intent) {
         return NextResponse.json({ error: 'No charge to refund' }, { status: 400 })
       }
-      const refund = await stripe.refunds.create({ payment_intent: invoice.payment_intent })
-      await logAdminAction(admin.id, 'refund_subscription', 'subscription', subId, { refund_id: refund.id }, ip)
+      // amount (dollars) > 0 → partial refund (Stripe wants cents); 0/absent → full.
+      const partial = typeof amount === 'number' && amount > 0
+      const refund = await stripe.refunds.create({
+        payment_intent: invoice.payment_intent,
+        ...(partial ? { amount: Math.round(amount * 100) } : {}),
+      })
+      await logAdminAction(
+        admin.id,
+        'refund_subscription',
+        'subscription',
+        subId,
+        { refund_id: refund.id, amount: partial ? amount : 'full' },
+        ip
+      )
       return NextResponse.json({ refund })
     }
 
