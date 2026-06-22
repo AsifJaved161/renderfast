@@ -5,6 +5,7 @@ import { processDiagnosticsJob, isUrlOnDomain, reclaimIfStale } from '@/lib/diag
 import { getOpsConfig } from '@/lib/app-config'
 import { isRenderableUrl, normalizeUrl } from '@/lib/url-utils'
 import { computeAiCitationScore, type GeoSignals } from '@/lib/geo-signals'
+import type { CoreWebVitals } from '@/lib/web-vitals'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -30,6 +31,7 @@ interface DiagRow {
   render_time_ms: number | null
   geo_signals: GeoSignals | null
   ai_citation_score: number | null
+  core_web_vitals: CoreWebVitals | null
 }
 
 // Per-URL health score (0–100) from the latest diagnostic for that URL.
@@ -71,7 +73,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ siteId: str
     const { data: rows } = await supabaseAdmin
       .from('render_diagnostics')
       .select(
-        'url, rendered_at, console_errors, failed_requests, content_diff_percentage, missing_seo_elements, render_succeeded, render_time_ms, geo_signals, ai_citation_score'
+        'url, rendered_at, console_errors, failed_requests, content_diff_percentage, missing_seo_elements, render_succeeded, render_time_ms, geo_signals, ai_citation_score, core_web_vitals'
       )
       .eq('site_id', siteId)
       .order('rendered_at', { ascending: false })
@@ -128,6 +130,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ siteId: str
         aiCitationScore: r.ai_citation_score ?? ai?.score ?? null,
         geoSignals: geo,
         recommendations: ai?.recommendations ?? [],
+        coreWebVitals: r.core_web_vitals ?? null,
       }
     })
 
@@ -179,6 +182,27 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ siteId: str
       .map((s) => ({ url: s.url, aiCitationScore: s.aiCitationScore, recommendations: s.recommendations }))
       .sort((a, b) => (a.aiCitationScore ?? 0) - (b.aiCitationScore ?? 0))
 
+    // ── Core Web Vitals ─────────────────────────────────────────────────────────
+    // Pages with field data + overall-rating distribution + a representative
+    // sample (prefer page-level; else the origin-level snapshot).
+    const cwvPages = scored.filter((s) => s.coreWebVitals)
+    const cwvSample =
+      cwvPages.find((s) => s.coreWebVitals?.source === 'url')?.coreWebVitals ??
+      cwvPages[0]?.coreWebVitals ??
+      null
+    const cwvSummary = {
+      measured: cwvPages.length,
+      sample: cwvSample,
+      distribution: {
+        good: cwvPages.filter((s) => s.coreWebVitals?.overall === 'good').length,
+        needsWork: cwvPages.filter((s) => s.coreWebVitals?.overall === 'needs-improvement').length,
+        poor: cwvPages.filter((s) => s.coreWebVitals?.overall === 'poor').length,
+      },
+      pages: cwvPages
+        .map((s) => ({ url: s.url, coreWebVitals: s.coreWebVitals }))
+        .sort((a, b) => (a.coreWebVitals?.overall === 'poor' ? -1 : 1)),
+    }
+
     return NextResponse.json({
       domain: site.domain,
       healthScore,
@@ -190,6 +214,7 @@ export async function GET(req: NextRequest, ctx: { params: Promise<{ siteId: str
       topErrors,
       aiCitationScore,
       aiPages,
+      cwvSummary,
     })
   } catch (e) {
     console.error('[DIAGNOSTICS_GET]:', e)
