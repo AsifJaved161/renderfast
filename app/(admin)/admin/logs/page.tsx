@@ -38,27 +38,38 @@ interface AuditLog {
 
 /* ── Action colours ────────────────────────────────────────────────────────── */
 
+// Colour by action. Destructive → red/volcano, billing → gold, etc. Anything
+// unmapped falls back to a sensible colour derived from keywords so newly-added
+// actions still read well without a code change.
 const ACTION_COLOR: Record<string, string> = {
   ban_user: 'red',
   unban_user: 'green',
   delete_user: 'red',
-  delete_site: 'red',
-  delete_render: 'red',
+  delete_plan: 'red',
+  deactivate_plan: 'volcano',
   change_plan: 'blue',
+  change_subscription_plan: 'blue',
+  cancel_subscription: 'volcano',
+  refund_subscription: 'gold',
+  override_render_limit: 'cyan',
+  reset_render_count: 'purple',
+  update_notes: 'default',
+  impersonate_user: 'orange',
   impersonate: 'orange',
-  update_user: 'cyan',
-  reset_renders: 'purple',
   create_plan: 'geekblue',
   update_plan: 'blue',
-  delete_plan: 'red',
-  update_subscription: 'blue',
-  cancel_subscription: 'volcano',
-  login: 'green',
-  logout: 'default',
+  update_settings: 'geekblue',
+  update_bot_cost_rate: 'gold',
+  update_cf_limits: 'geekblue',
 }
 
 function actionColor(action: string): string {
-  return ACTION_COLOR[action] ?? 'default'
+  if (ACTION_COLOR[action]) return ACTION_COLOR[action]
+  if (/delete|ban|cancel/.test(action)) return 'red'
+  if (/refund|cost|rate|price/.test(action)) return 'gold'
+  if (/create/.test(action)) return 'geekblue'
+  if (/update|change|override|reset/.test(action)) return 'blue'
+  return 'default'
 }
 
 /* ── Known options for filters ─────────────────────────────────────────────── */
@@ -210,18 +221,34 @@ export default function AdminLogsPage() {
   const [targetType, setTargetType] = useState<string | undefined>()
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null)
 
-  // Admin list for dropdown
+  // Filter dropdowns — populated from the API so they always match reality.
   const [adminList, setAdminList] = useState<{ value: string; label: string }[]>([])
+  const [actionOptions, setActionOptions] = useState(ACTION_OPTIONS)
+  const [targetOptions, setTargetOptions] = useState(TARGET_TYPE_OPTIONS)
 
   const LIMIT = 25
 
-  /* ── Fetch admin list once ──────────────────────────────────────────────── */
+  const humanize = (s: string) => s.replace(/_/g, ' ')
+  const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+  /* ── Fetch filter options once ──────────────────────────────────────────── */
   useEffect(() => {
     fetch('/api/admin/logs?distinct_admins=true')
       .then((r) => r.json())
       .then((d) => {
         const admins: string[] = d.admins ?? []
         setAdminList(admins.map((email) => ({ value: email, label: email })))
+      })
+      .catch(() => {})
+
+    // Self-maintaining action/target filters (driven by the actual log values).
+    fetch('/api/admin/logs?distinct_actions=true')
+      .then((r) => r.json())
+      .then((d) => {
+        const actions: string[] = d.actions ?? []
+        const targets: string[] = d.targetTypes ?? []
+        if (actions.length) setActionOptions(actions.map((a) => ({ value: a, label: humanize(a) })))
+        if (targets.length) setTargetOptions(targets.map((t) => ({ value: t, label: titleCase(t) })))
       })
       .catch(() => {})
   }, [])
@@ -400,7 +427,7 @@ export default function AdminLogsPage() {
               setPage(1)
               setActionType(v)
             }}
-            options={ACTION_OPTIONS}
+            options={actionOptions}
           />
           <Select
             allowClear
@@ -411,7 +438,7 @@ export default function AdminLogsPage() {
               setPage(1)
               setTargetType(v)
             }}
-            options={TARGET_TYPE_OPTIONS}
+            options={targetOptions}
           />
           <RangePicker
             style={{ width: 280 }}
