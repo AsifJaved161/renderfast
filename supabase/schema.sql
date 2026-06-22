@@ -152,6 +152,27 @@ create policy "llms_txt_cache_via_site" on public.llms_txt_cache
     exists (select 1 from public.sites s where s.id = site_id and s.user_id = auth.uid())
   );
 
+-- Cloudflare resource-usage aggregates for the admin panel (single round-trip).
+create or replace function public.admin_cloudflare_usage()
+returns table (
+  renders_today bigint, renders_month bigint, renders_all bigint,
+  kv_keys bigint, kv_bytes bigint, reads_today bigint, writes_today bigint, total_sites bigint
+)
+language sql
+stable
+as $$
+  select
+    (select count(*) from public.renders where created_at >= current_date),
+    (select count(*) from public.renders where created_at >= now() - interval '30 days'),
+    (select count(*) from public.renders),
+    (select count(*) from public.cache_entries),
+    (select coalesce(sum(html_size_bytes), 0) from public.cache_entries),
+    (select count(*) from public.renders where created_at >= current_date and cache_hit = true),
+    (select count(*) from public.renders where created_at >= current_date and cache_hit = false),
+    (select count(*) from public.sites);
+$$;
+revoke all on function public.admin_cloudflare_usage() from public, anon, authenticated;
+
 -- ══════════════════════════════════════════════════════════════════════════════
 -- 5. SITEMAPS
 -- ══════════════════════════════════════════════════════════════════════════════

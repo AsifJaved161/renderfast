@@ -14,6 +14,7 @@ import {
   ThunderboltFilled,
   SettingOutlined,
   DollarOutlined,
+  CloudServerOutlined,
 } from '@ant-design/icons'
 
 const BRAND = '#2da01d'
@@ -25,6 +26,7 @@ const NAV = [
   { key: '/admin/subscriptions', icon: <CreditCardOutlined />, label: 'Subscriptions', hint: 'Active Stripe subscriptions' },
   { key: '/admin/renders', icon: <ThunderboltOutlined />, label: 'Renders Monitor', hint: 'Every render across the platform' },
   { key: '/admin/logs', icon: <FileTextOutlined />, label: 'Admin Logs', hint: 'Audit trail of admin actions' },
+  { key: '/admin/cloudflare', icon: <CloudServerOutlined />, label: 'Cloudflare Usage', hint: 'Resources used vs remaining + capacity for scale' },
   { key: '/admin/bot-cost', icon: <DollarOutlined />, label: 'Bandwidth Rate', hint: 'Set the $/GB rate for bot cost estimates' },
   { key: '/admin/settings', icon: <SettingOutlined />, label: 'Platform Settings', hint: 'Cloudflare config, usage & queue limits' },
 ]
