@@ -77,8 +77,12 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 
     if (body.plan && ['free', 'starter', 'pro', 'agency'].includes(body.plan)) {
       updates.plan = body.plan
-      updates.render_limit = PLAN_RENDER_LIMITS[body.plan as keyof typeof PLAN_RENDER_LIMITS]
-      await logAdminAction(admin.id, 'change_plan', 'user', id, { from: before.plan, to: body.plan }, ip(req))
+      // Reset render_limit to the plan default UNLESS the admin opted out
+      // (match_limit === false keeps the user's existing/custom limit).
+      if (body.match_limit !== false) {
+        updates.render_limit = PLAN_RENDER_LIMITS[body.plan as keyof typeof PLAN_RENDER_LIMITS]
+      }
+      await logAdminAction(admin.id, 'change_plan', 'user', id, { from: before.plan, to: body.plan, matchLimit: body.match_limit !== false }, ip(req))
     }
     if (typeof body.is_banned === 'boolean') {
       updates.is_banned = body.is_banned

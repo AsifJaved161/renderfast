@@ -185,7 +185,11 @@ export default function AdminUsersPage() {
         { type: 'divider' as const },
         { key: 'delete', label: 'Delete Account', danger: true },
       ],
-      onClick: ({ key }: { key: string }) => {
+      onClick: ({ key, domEvent }: { key: string; domEvent: { stopPropagation: () => void } }) => {
+        // The menu renders in a portal, but React synthetic events bubble through
+        // the React tree to the row's onClick — stop it so picking an action
+        // (e.g. Change Plan) doesn't also open the profile drawer.
+        domEvent.stopPropagation()
         if (key === 'view') setDrawerUser(u)
         else if (key === 'plan') setPlanModal(u)
         else if (key === 'ban') setBanModal(u)
@@ -281,7 +285,7 @@ export default function AdminUsersPage() {
                     {u.full_name?.[0]?.toUpperCase() ?? <UserOutlined />}
                   </Avatar>
                   <div>
-                    <div style={{ color: '#eee' }}>{u.full_name ?? '—'}</div>
+                    <div style={{ color: '#1f2937' }}>{u.full_name ?? '—'}</div>
                     <Text type="secondary" style={{ fontSize: 12 }}>
                       {u.email}
                     </Text>
@@ -348,8 +352,8 @@ export default function AdminUsersPage() {
       <ChangePlanModal
         user={planModal}
         onClose={() => setPlanModal(null)}
-        onConfirm={async (u, newPlan) => {
-          const okFlag = await patchUser(u.id, { plan: newPlan }, 'Plan updated')
+        onConfirm={async (u, newPlan, matchLimit) => {
+          const okFlag = await patchUser(u.id, { plan: newPlan, match_limit: matchLimit }, 'Plan updated')
           if (okFlag) setPlanModal(null)
         }}
       />
@@ -487,18 +491,21 @@ function ChangePlanModal({
 }: {
   user: AdminUser | null
   onClose: () => void
-  onConfirm: (u: AdminUser, plan: string) => void
+  onConfirm: (u: AdminUser, plan: string, matchLimit: boolean) => void
 }) {
   const [newPlan, setNewPlan] = useState<string>('free')
   const [matchLimit, setMatchLimit] = useState(true)
 
   useEffect(() => {
-    if (user) setNewPlan(user.plan)
+    if (user) {
+      setNewPlan(user.plan)
+      setMatchLimit(true)
+    }
   }, [user])
 
   if (!user) return null
   return (
-    <Modal open title="Change Plan" onCancel={onClose} onOk={() => onConfirm(user, newPlan)} okText="Confirm">
+    <Modal open title="Change Plan" onCancel={onClose} onOk={() => onConfirm(user, newPlan, matchLimit)} okText="Confirm">
       <Form layout="vertical">
         <Form.Item label="New plan">
           <Select
