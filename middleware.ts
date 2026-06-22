@@ -15,18 +15,27 @@ const INJECT_API_PREFIXES = [
   '/api/bot-cost',
   '/api/llms-txt',
   '/api/gsc',
+  '/api/team',
 ]
 
 function isInjectableApi(pathname: string): boolean {
   return INJECT_API_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'))
 }
 
+// Team routes manage account context themselves (switch/accept must work even
+// for viewers), so they're exempt from the viewer read-only block below.
+function isTeamApi(pathname: string): boolean {
+  return pathname === '/api/team' || pathname.startsWith('/api/team/')
+}
+
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
-  // Strip any client-supplied x-user-id so it can never be spoofed.
+  // Strip any client-supplied identity/role headers so they can never be spoofed.
   const requestHeaders = new Headers(request.headers)
   requestHeaders.delete('x-user-id')
+  requestHeaders.delete('x-self-id')
+  requestHeaders.delete('x-account-role')
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -63,14 +72,50 @@ export async function middleware(request: NextRequest) {
     return res
   }
 
-  // ── API routes: inject a VERIFIED user id ────────────────────────────────────
+  // ── API routes: inject a VERIFIED user id (+ team/effective-account context) ──
   // getUser() validates the JWT signature with Supabase (spoof-proof) — required
   // because the route handlers trust x-user-id for data access.
   if (isInjectableApi(pathname)) {
     const {
       data: { user },
     } = await supabase.auth.getUser()
-    if (user) requestHeaders.set('x-user-id', user.id)
+
+    if (user) {
+      const selfId = user.id
+      // Effective account: by default the user's own account. If they've switched
+      // into a team account (cookie) AND are an active member of it, the data
+      // routes operate AS that owner — so every existing `.eq('user_id', uid)`
+      // check keeps working unchanged, just against the shared account.
+      let effectiveId = selfId
+      let role: 'owner' | 'admin' | 'member' | 'viewer' = 'owner'
+
+      const accountId = request.cookies.get('rf_account_id')?.value
+      if (accountId && accountId !== selfId) {
+        // RLS permits the member to read their own membership row.
+        const { data: m } = await supabase
+          .from('team_members')
+          .select('role')
+          .eq('owner_user_id', accountId)
+          .eq('member_user_id', selfId)
+          .eq('status', 'active')
+          .maybeSingle()
+        if (m) {
+          effectiveId = accountId
+          role = m.role as 'admin' | 'member' | 'viewer'
+        }
+        // stale/invalid cookie → silently stay in own account
+      }
+
+      requestHeaders.set('x-user-id', effectiveId)
+      requestHeaders.set('x-self-id', selfId)
+      requestHeaders.set('x-account-role', role)
+
+      // Centralized role gate: a Viewer is read-only on data routes (team routes
+      // manage context and run their own checks, so they're exempt).
+      if (role === 'viewer' && request.method !== 'GET' && !isTeamApi(pathname)) {
+        return finalize(NextResponse.json({ error: 'Read-only access for this account' }, { status: 403 }))
+      }
+    }
     return finalize(NextResponse.next({ request: { headers: requestHeaders } }))
   }
 
@@ -114,5 +159,7 @@ export const config = {
     '/api/llms-txt/:path*',
     '/api/gsc',
     '/api/gsc/:path*',
+    '/api/team',
+    '/api/team/:path*',
   ],
 }
