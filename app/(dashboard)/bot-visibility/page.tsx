@@ -80,6 +80,28 @@ interface AiPage {
   recommendations: Recommendation[]
 }
 
+type CwvRating = 'good' | 'needs-improvement' | 'poor'
+interface CwvMetric {
+  value: number
+  rating: CwvRating
+}
+interface CoreWebVitals {
+  source: 'url' | 'origin'
+  collectedFrom: string
+  lcp: CwvMetric | null
+  cls: CwvMetric | null
+  inp: CwvMetric | null
+  fcp: CwvMetric | null
+  ttfb: CwvMetric | null
+  overall: CwvRating | null
+}
+interface CwvSummary {
+  measured: number
+  sample: CoreWebVitals | null
+  distribution: { good: number; needsWork: number; poor: number }
+  pages: { url: string; coreWebVitals: CoreWebVitals | null }[]
+}
+
 interface DiagSummary {
   domain: string
   healthScore: number | null
@@ -91,7 +113,25 @@ interface DiagSummary {
   topErrors: { message: string; count: number }[]
   aiCitationScore?: number | null
   aiPages?: AiPage[]
+  cwvSummary?: CwvSummary
   message?: string
+}
+
+const RATING_COLOR: Record<CwvRating, string> = {
+  good: '#52c41a',
+  'needs-improvement': '#faad14',
+  poor: '#ff4d4f',
+}
+const RATING_LABEL: Record<CwvRating, string> = {
+  good: 'Good',
+  'needs-improvement': 'Needs work',
+  poor: 'Poor',
+}
+// Format a metric value for display (CLS unitless; the rest are milliseconds).
+function fmtCwv(name: 'lcp' | 'cls' | 'inp' | 'fcp' | 'ttfb', m: CwvMetric | null): string {
+  if (!m) return '—'
+  if (name === 'cls') return m.value.toFixed(2)
+  return m.value >= 1000 ? `${(m.value / 1000).toFixed(2)} s` : `${Math.round(m.value)} ms`
 }
 
 interface ScanJob {
@@ -297,6 +337,9 @@ export default function BotVisibilityPage() {
   const aiRef = useRef<HTMLDivElement>(null)
   const jumpTo = (ref: React.RefObject<HTMLDivElement | null>) =>
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
+  // Core Web Vitals summary (null until a scan with a Google API key produces data).
+  const cwv = data?.cwvSummary ?? null
 
   // Arrow button that opens a URL in a new tab (without toggling the accordion).
   const openBtn = (url: string) => (
@@ -655,6 +698,71 @@ export default function BotVisibilityPage() {
           </Col>
         </Row>
         </div>
+
+        {/* ── Core Web Vitals (real-user field data from Chrome UX Report) ────── */}
+        <Card
+          style={{ marginTop: 24 }}
+          title={
+            <Space>
+              Core Web Vitals
+              {cwv?.sample && <Tag>{cwv.sample.source === 'url' ? 'page-level' : 'site/origin'}</Tag>}
+            </Space>
+          }
+        >
+          {!cwv || cwv.measured === 0 || !cwv.sample ? (
+            <Text type="secondary">
+              No real-user data yet. Core Web Vitals come from Google&apos;s Chrome UX Report and
+              appear after a re-scan once the site has enough Chrome traffic (and an admin has set a
+              Google API key).
+            </Text>
+          ) : (
+            (() => {
+              const summary = cwv
+              const s = summary.sample!
+              const tiles: { key: 'lcp' | 'cls' | 'inp' | 'fcp' | 'ttfb'; label: string; m: CwvMetric | null }[] = [
+                { key: 'lcp', label: 'LCP — Largest Contentful Paint', m: s.lcp },
+                { key: 'inp', label: 'INP — Interaction to Next Paint', m: s.inp },
+                { key: 'cls', label: 'CLS — Cumulative Layout Shift', m: s.cls },
+                { key: 'fcp', label: 'FCP — First Contentful Paint', m: s.fcp },
+                { key: 'ttfb', label: 'TTFB — Time to First Byte', m: s.ttfb },
+              ]
+              return (
+                <>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    p75 real-user values for <strong>{s.collectedFrom}</strong> · measured on{' '}
+                    {summary.measured} page(s) ·{' '}
+                    <Tag color="#52c41a">{summary.distribution.good} good</Tag>
+                    <Tag color="#faad14">{summary.distribution.needsWork} needs work</Tag>
+                    <Tag color="#ff4d4f">{summary.distribution.poor} poor</Tag>
+                  </Text>
+                  <Row gutter={[12, 12]} style={{ marginTop: 14 }}>
+                    {tiles.map((t) => (
+                      <Col xs={12} md={t.key === 'lcp' || t.key === 'inp' || t.key === 'cls' ? 8 : 12} key={t.key}>
+                        <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 14 }}>
+                          <Text type="secondary" style={{ fontSize: 12 }}>{t.label}</Text>
+                          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4 }}>
+                            <span style={{ fontSize: 24, fontWeight: 700, color: t.m ? RATING_COLOR[t.m.rating] : '#bfbfbf' }}>
+                              {fmtCwv(t.key, t.m)}
+                            </span>
+                            {t.m && (
+                              <Tag color={RATING_COLOR[t.m.rating]} style={{ margin: 0 }}>
+                                {RATING_LABEL[t.m.rating]}
+                              </Tag>
+                            )}
+                          </div>
+                        </div>
+                      </Col>
+                    ))}
+                  </Row>
+                  <Text type="secondary" style={{ fontSize: 11, display: 'block', marginTop: 10 }}>
+                    Field data (28-day p75) — the same Core Web Vitals Google uses as a ranking
+                    signal. LCP/INP/CLS are the three core metrics.
+                  </Text>
+                </>
+              )
+            })()
+          )}
+        </Card>
         </>
       )}
     </div>
