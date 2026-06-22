@@ -1,6 +1,6 @@
 // Cloudflare Browser Rendering API — no local browser process, no RAM pool.
 import TurndownService from 'turndown'
-import { getCloudflareConfig } from '@/lib/app-config'
+import { getCloudflareConfig, getOpsConfig } from '@/lib/app-config'
 
 export interface RenderResult {
   html: string
@@ -44,6 +44,9 @@ export async function renderPage(url: string, isMobile = false): Promise<RenderR
     cf.browserRenderingUrl ||
     `https://api.cloudflare.com/client/v4/accounts/${cf.accountId}/browser-rendering/content`
 
+  // Admin-configurable navigation timeout (cached; shares the CF-config DB read).
+  const { renderTimeoutMs } = await getOpsConfig()
+
   const start = Date.now()
   try {
     const res = await fetch(contentUrl, {
@@ -59,7 +62,7 @@ export async function renderPage(url: string, isMobile = false): Promise<RenderR
         // networkidle2 (tolerates ≤2 lingering connections) instead of
         // networkidle0 — many real pages keep analytics/ads/websocket sockets
         // open and would otherwise hang until timeout. 30s cap fails fast.
-        gotoOptions: { waitUntil: 'networkidle2', timeout: 30000 },
+        gotoOptions: { waitUntil: 'networkidle2', timeout: renderTimeoutMs },
         rejectResourceTypes: ['image', 'font', 'media'],
         viewport: isMobile
           ? { width: 390, height: 844, isMobile: true }

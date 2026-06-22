@@ -17,6 +17,7 @@ export const SETTING_KEYS = {
   rescanConcurrency: 'rescan_concurrency',
   cacheTtlSeconds: 'cache_ttl_seconds',
   sitemapMaxUrls: 'sitemap_max_urls',
+  renderTimeoutMs: 'render_timeout_ms',
 } as const
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS]
@@ -90,6 +91,7 @@ export interface OpsConfig {
   rescanConcurrency: number
   cacheTtlSeconds: number
   sitemapMaxUrls: number
+  renderTimeoutMs: number
 }
 
 export const OPS_DEFAULTS: OpsConfig = {
@@ -97,6 +99,7 @@ export const OPS_DEFAULTS: OpsConfig = {
   rescanConcurrency: 5,
   cacheTtlSeconds: 86400,
   sitemapMaxUrls: 500,
+  renderTimeoutMs: 30000,
 }
 
 export async function getOpsConfig(): Promise<OpsConfig> {
@@ -105,5 +108,6 @@ export async function getOpsConfig(): Promise<OpsConfig> {
     rescanConcurrency: await int(SETTING_KEYS.rescanConcurrency, OPS_DEFAULTS.rescanConcurrency),
     cacheTtlSeconds: await int(SETTING_KEYS.cacheTtlSeconds, OPS_DEFAULTS.cacheTtlSeconds),
     sitemapMaxUrls: await int(SETTING_KEYS.sitemapMaxUrls, OPS_DEFAULTS.sitemapMaxUrls),
+    renderTimeoutMs: await int(SETTING_KEYS.renderTimeoutMs, OPS_DEFAULTS.renderTimeoutMs),
   }
 }

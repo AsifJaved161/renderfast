@@ -104,6 +104,7 @@ export async function GET() {
           rescan_concurrency: db[SETTING_KEYS.rescanConcurrency] ? 'db' : 'default',
           cache_ttl_seconds: db[SETTING_KEYS.cacheTtlSeconds] ? 'db' : 'default',
           sitemap_max_urls: db[SETTING_KEYS.sitemapMaxUrls] ? 'db' : 'default',
+          render_timeout_ms: db[SETTING_KEYS.renderTimeoutMs] ? 'db' : 'default',
         },
       },
       usage: {

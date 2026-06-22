@@ -41,8 +41,8 @@ interface CfField {
 interface SettingsData {
   cloudflare: CfField[]
   ops: {
-    values: { maxRescanUrls: number; rescanConcurrency: number; cacheTtlSeconds: number; sitemapMaxUrls: number }
-    defaults: { maxRescanUrls: number; rescanConcurrency: number; cacheTtlSeconds: number; sitemapMaxUrls: number }
+    values: { maxRescanUrls: number; rescanConcurrency: number; cacheTtlSeconds: number; sitemapMaxUrls: number; renderTimeoutMs: number }
+    defaults: { maxRescanUrls: number; rescanConcurrency: number; cacheTtlSeconds: number; sitemapMaxUrls: number; renderTimeoutMs: number }
     sources: Record<string, string>
   }
   usage: {
@@ -86,7 +86,7 @@ export default function AdminSettingsPage() {
   const [kv, setKv] = useState('')
   const [brurl, setBrurl] = useState('')
   // Ops form state
-  const [ops, setOps] = useState({ maxRescanUrls: 15, rescanConcurrency: 5, cacheTtlSeconds: 86400, sitemapMaxUrls: 500 })
+  const [ops, setOps] = useState({ maxRescanUrls: 15, rescanConcurrency: 5, cacheTtlSeconds: 86400, sitemapMaxUrls: 500, renderTimeoutMs: 30000 })
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -166,6 +166,7 @@ export default function AdminSettingsPage() {
         rescan_concurrency: String(ops.rescanConcurrency),
         cache_ttl_seconds: String(ops.cacheTtlSeconds),
         sitemap_max_urls: String(ops.sitemapMaxUrls),
+        render_timeout_ms: String(ops.renderTimeoutMs),
       }
       const res = await fetch('/api/admin/settings', {
         method: 'PATCH',
@@ -285,6 +286,11 @@ export default function AdminSettingsPage() {
                 <Text>Sitemap max URLs</Text>
                 <InputNumber min={1} max={10000} value={ops.sitemapMaxUrls} onChange={(v) => setOps({ ...ops, sitemapMaxUrls: v ?? 500 })} style={{ width: '100%' }} />
                 <Text type="secondary" style={{ fontSize: 12 }}>default {data?.ops.defaults.sitemapMaxUrls}</Text>
+              </Col>
+              <Col xs={12}>
+                <Text>Render timeout (ms)</Text>
+                <InputNumber min={5000} max={120000} step={1000} value={ops.renderTimeoutMs} onChange={(v) => setOps({ ...ops, renderTimeoutMs: v ?? 30000 })} style={{ width: '100%' }} />
+                <Text type="secondary" style={{ fontSize: 12 }}>{Math.round(ops.renderTimeoutMs / 1000)}s · default {data?.ops.defaults.renderTimeoutMs}</Text>
               </Col>
             </Row>
             <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={saveOps} style={{ background: BRAND, borderColor: BRAND, marginTop: 16 }}>
