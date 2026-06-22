@@ -18,6 +18,7 @@ import {
 import type { MenuProps } from 'antd'
 import {
   HomeOutlined,
+  CompassOutlined,
   BarChartOutlined,
   BulbOutlined,
   BulbFilled,
@@ -99,6 +100,7 @@ const NAV: NavGroup[] = [
   {
     title: 'ANALYTICS',
     items: [
+      { key: '/onboarding', label: 'Get Started', icon: <CompassOutlined />, hint: 'Guided setup — add a site & see your first render' },
       { key: '/domain-manager', label: 'Domain Manager', icon: <GlobalOutlined />, hint: 'Add & manage your websites' },
       { key: '/dashboard', label: 'Dashboard', icon: <HomeOutlined />, hint: 'Overview of bot traffic & cache performance' },
       { key: '/cdn-analytics', label: 'CDN Analytics', icon: <BarChartOutlined />, hint: 'Detailed crawler traffic & cache stats' },

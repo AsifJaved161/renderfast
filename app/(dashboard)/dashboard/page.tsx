@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   Row,
   Col,
@@ -87,6 +88,31 @@ export default function DashboardPage() {
   // HTML and the client's first render stay identical (no hydration mismatch).
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
+
+  // First-time users (no sites yet) → guide them through the onboarding wizard.
+  // Explicit fetch (not context) so there's no "still loading" race, and a
+  // localStorage flag means we never trap a returning user in a redirect loop.
+  const router = useRouter()
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('rf_onboarded')) return
+    } catch {
+      return
+    }
+    fetch('/api/sites')
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => {
+        if ((d.sites ?? []).length === 0) router.push('/onboarding')
+        else {
+          try {
+            localStorage.setItem('rf_onboarded', '1')
+          } catch {
+            /* ignore */
+          }
+        }
+      })
+      .catch(() => {})
+  }, [router])
 
   const load = useCallback(async () => {
     setLoading(true)

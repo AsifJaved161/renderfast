@@ -16,6 +16,7 @@ const INJECT_API_PREFIXES = [
   '/api/llms-txt',
   '/api/gsc',
   '/api/team',
+  '/api/onboarding',
 ]
 
 function isInjectableApi(pathname: string): boolean {
@@ -161,5 +162,6 @@ export const config = {
     '/api/gsc/:path*',
     '/api/team',
     '/api/team/:path*',
+    '/api/onboarding/:path*',
   ],
 }
