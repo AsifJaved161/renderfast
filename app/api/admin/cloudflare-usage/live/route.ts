@@ -81,6 +81,7 @@ export async function GET() {
         keys: typeof storage?.keyCount === 'number' ? storage.keyCount : null,
         readsToday: opCount('read'),
         writesToday: opCount('write'),
+        listsToday: opCount('list'),
         deletesToday: opCount('delete'),
       },
     })

@@ -75,7 +75,9 @@ export async function GET() {
     // new tab so the admin can see the authoritative analytics there.
     const cf = await getCloudflareConfig()
     const dashboardUrl = cf.accountId
-      ? `https://dash.cloudflare.com/${cf.accountId}/workers/kv/namespaces${cf.kvNamespaceId ? `/${cf.kvNamespaceId}` : ''}`
+      ? cf.kvNamespaceId
+        ? `https://dash.cloudflare.com/${cf.accountId}/workers/kv/namespaces/${cf.kvNamespaceId}/metrics`
+        : `https://dash.cloudflare.com/${cf.accountId}/workers/kv/namespaces`
       : 'https://dash.cloudflare.com/'
 
     // Capacity planning for scale: how many MORE sites the remaining monthly

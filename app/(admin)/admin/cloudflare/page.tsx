@@ -66,6 +66,7 @@ interface LiveKv {
   keys: number | null
   readsToday: number
   writesToday: number
+  listsToday: number
   deletesToday: number
 }
 
@@ -199,7 +200,17 @@ export default function AdminCloudflarePage() {
           type="success"
           showIcon
           style={{ marginBottom: 16 }}
-          message={`KV figures below are live from Cloudflare (as of ${new Date(live!.fetchedAt).toLocaleString()}). Browser Rendering is from our own records.`}
+          message={`Live from Cloudflare (as of ${new Date(live!.fetchedAt).toLocaleString()})`}
+          description={
+            <span>
+              KV today: <strong>{n(live!.kv.readsToday)}</strong> reads ·{' '}
+              <strong>{n(live!.kv.writesToday)}</strong> writes ·{' '}
+              <strong>{n(live!.kv.listsToday)}</strong> lists ·{' '}
+              <strong>{n(live!.kv.deletesToday)}</strong> deletes. Browser Rendering is from our own
+              records. Full charts (latency, hot/cold/not-found) are in the Cloudflare dashboard →
+              “Open in Cloudflare”.
+            </span>
+          }
         />
       )}
 
