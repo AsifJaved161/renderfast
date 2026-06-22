@@ -105,7 +105,7 @@ export default function AdminPlansPage() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={3} style={{ color: '#fff', margin: 0 }}>
+        <Title level={3} style={{ color: '#1f2937', margin: 0 }}>
           Plan Management
         </Title>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)} style={{ background: BRAND, borderColor: BRAND }}>
@@ -121,7 +121,7 @@ export default function AdminPlansPage() {
             <Col xs={24} sm={12} lg={6} key={plan.id}>
               <Card loading={loading}>
                 <Space style={{ justifyContent: 'space-between', width: '100%' }}>
-                  <Title level={4} style={{ margin: 0, color: '#fff' }}>
+                  <Title level={4} style={{ margin: 0, color: '#1f2937' }}>
                     {plan.name}
                   </Title>
                   <Tag>{plan.slug}</Tag>
@@ -130,14 +130,14 @@ export default function AdminPlansPage() {
                   <Text style={{ fontSize: 28, fontWeight: 700, color: BRAND }}>${plan.price_monthly}</Text>
                   <Text type="secondary">/mo</Text>
                 </div>
-                <ul style={{ paddingLeft: 16, color: '#bbb', fontSize: 13, lineHeight: 1.8 }}>
+                <ul style={{ paddingLeft: 16, color: '#6b7280', fontSize: 13, lineHeight: 1.8 }}>
                   <li>{plan.render_limit.toLocaleString()} renders</li>
                   <li>{plan.site_limit === -1 ? 'Unlimited' : plan.site_limit} sites</li>
                   <li>{plan.cache_size_gb} GB cache</li>
                   <li>{count} active users</li>
                 </ul>
                 {plan.stripe_price_id && (
-                  <div style={{ fontSize: 12, color: '#888', marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 8 }}>
                     <Text type="secondary">{plan.stripe_price_id.slice(0, 10)}••••</Text>
                     <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => copy(plan.stripe_price_id!)} />
                   </div>
@@ -167,7 +167,7 @@ export default function AdminPlansPage() {
       </Row>
 
       {/* ── Subscriptions by plan ───────────────────────────────────────────── */}
-      <Card title={<span style={{ color: '#fff' }}>Active Subscriptions by Plan</span>} style={{ marginTop: 24 }}>
+      <Card title={<span style={{ color: '#1f2937' }}>Active Subscriptions by Plan</span>} style={{ marginTop: 24 }}>
         <Table
           rowKey="plan"
           pagination={false}

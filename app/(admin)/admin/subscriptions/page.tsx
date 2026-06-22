@@ -131,7 +131,7 @@ export default function AdminSubscriptionsPage() {
   return (
     <div>
       <Space style={{ marginBottom: 16 }}>
-        <Title level={3} style={{ color: '#fff', margin: 0 }}>
+        <Title level={3} style={{ color: '#1f2937', margin: 0 }}>
           Subscriptions
         </Title>
         <Badge count={`MRR: $${mrr.toLocaleString()}`} style={{ backgroundColor: BRAND }} />
@@ -216,7 +216,7 @@ export default function AdminSubscriptionsPage() {
               width: 150,
               render: (id: string) => (
                 <Space>
-                  <span style={{ color: '#888' }}>{id.slice(0, 10)}…</span>
+                  <span style={{ color: '#6b7280' }}>{id.slice(0, 10)}…</span>
                   <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => copy(id)} />
                 </Space>
               ),

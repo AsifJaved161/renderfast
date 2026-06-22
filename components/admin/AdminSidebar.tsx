@@ -42,20 +42,20 @@ export default function AdminSidebar() {
   }
 
   return (
-    <Layout.Sider width={230} style={{ background: '#141414', borderRight: '1px solid #222' }}>
+    <Layout.Sider width={230} style={{ background: '#ffffff', borderRight: '1px solid #e5e7eb' }}>
       {/* Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '18px 20px', fontWeight: 800, fontSize: 18, color: '#fff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '18px 20px', fontWeight: 800, fontSize: 18, color: '#1f2937' }}>
         <ThunderboltFilled style={{ color: BRAND }} />
         Render<span style={{ color: BRAND }}>Fast</span>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100% - 60px)' }}>
         <Menu
-          theme="dark"
+          theme="light"
           mode="inline"
           selectedKeys={[selected]}
           onClick={({ key }) => router.push(key)}
-          style={{ background: '#141414', border: 'none', flex: 1 }}
+          style={{ background: '#ffffff', border: 'none', flex: 1 }}
           items={NAV.map((n) => ({
             key: n.key,
             icon: n.icon,
@@ -67,12 +67,12 @@ export default function AdminSidebar() {
           }))}
         />
 
-        <div style={{ padding: 12, borderTop: '1px solid #222' }}>
+        <div style={{ padding: 12, borderTop: '1px solid #e5e7eb' }}>
           <Button
             type="text"
             icon={<ExportOutlined />}
             block
-            style={{ color: '#aaa', textAlign: 'left', justifyContent: 'flex-start' }}
+            style={{ color: '#6b7280', textAlign: 'left', justifyContent: 'flex-start' }}
             onClick={() => window.open('/dashboard', '_blank')}
           >
             View Client App

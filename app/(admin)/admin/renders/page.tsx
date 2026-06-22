@@ -79,9 +79,9 @@ function timeColor(ms: number | null) {
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <Card size="small" style={{ background: '#1a1a1a', borderColor: '#2a2a2a' }} bodyStyle={{ padding: '14px 18px' }}>
-      <Text style={{ color: '#888', fontSize: 12 }}>{label}</Text>
-      <div style={{ color: '#fff', fontSize: 26, fontWeight: 700, lineHeight: 1.2, marginTop: 4 }}>{value}</div>
+    <Card size="small" style={{ background: '#ffffff', borderColor: '#e5e7eb' }} bodyStyle={{ padding: '14px 18px' }}>
+      <Text style={{ color: '#6b7280', fontSize: 12 }}>{label}</Text>
+      <div style={{ color: '#1f2937', fontSize: 26, fontWeight: 700, lineHeight: 1.2, marginTop: 4 }}>{value}</div>
     </Card>
   )
 }
@@ -160,7 +160,7 @@ export default function AdminRendersPage() {
       title: 'Timestamp',
       dataIndex: 'created_at',
       width: 170,
-      render: (v: string) => <Text style={{ fontSize: 12, color: '#bbb', fontVariantNumeric: 'tabular-nums' }}>{fmtTimestamp(v)}</Text>,
+      render: (v: string) => <Text style={{ fontSize: 12, color: '#6b7280', fontVariantNumeric: 'tabular-nums' }}>{fmtTimestamp(v)}</Text>,
     },
     {
       title: 'User',
@@ -168,7 +168,7 @@ export default function AdminRendersPage() {
       width: 160,
       render: (email: string) => (
         <Tooltip title={email}>
-          <Text style={{ fontSize: 12, color: '#ccc' }}>{truncate(email, 20)}</Text>
+          <Text style={{ fontSize: 12, color: '#374151' }}>{truncate(email, 20)}</Text>
         </Tooltip>
       ),
     },
@@ -183,7 +183,7 @@ export default function AdminRendersPage() {
       dataIndex: 'url',
       render: (url: string) => (
         <Tooltip title={url}>
-          <Text style={{ fontSize: 12, color: '#aaa' }}>{truncate(url, 40)}</Text>
+          <Text style={{ fontSize: 12, color: '#6b7280' }}>{truncate(url, 40)}</Text>
         </Tooltip>
       ),
     },
@@ -193,7 +193,7 @@ export default function AdminRendersPage() {
       width: 170,
       render: (_, r) => (
         <Space size={6}>
-          <Text style={{ fontSize: 12, color: '#ccc' }}>{r.bot_name ?? '—'}</Text>
+          <Text style={{ fontSize: 12, color: '#374151' }}>{r.bot_name ?? '—'}</Text>
           {r.bot_type && <Tag color={BOT_TYPE_COLOR[r.bot_type] ?? 'default'} style={{ margin: 0 }}>{r.bot_type}</Tag>}
         </Space>
       ),
@@ -225,7 +225,7 @@ export default function AdminRendersPage() {
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <Title level={3} style={{ color: '#fff', margin: 0 }}>
+        <Title level={3} style={{ color: '#1f2937', margin: 0 }}>
           Renders Monitor
         </Title>
         <Space size={12}>
@@ -244,7 +244,7 @@ export default function AdminRendersPage() {
               <Text style={{ color: '#52c41a', fontSize: 12 }}>Live</Text>
             </Space>
           )}
-          <Text style={{ color: '#888', fontSize: 13 }}>Auto-refresh</Text>
+          <Text style={{ color: '#6b7280', fontSize: 13 }}>Auto-refresh</Text>
           <Switch checked={autoRefresh} onChange={setAutoRefresh} />
         </Space>
       </div>

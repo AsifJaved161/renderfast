@@ -94,7 +94,7 @@ export default function AdminDashboardPage() {
 
   return (
     <div>
-      <Title level={3} style={{ color: '#fff' }}>
+      <Title level={3} style={{ color: '#1f2937' }}>
         Overview
       </Title>
 
@@ -117,7 +117,7 @@ export default function AdminDashboardPage() {
       {/* ── Revenue ─────────────────────────────────────────────────────────── */}
       <Row gutter={[16, 16]} style={{ marginTop: 24 }}>
         <Col xs={24} lg={16}>
-          <Card title={<span style={{ color: '#fff' }}>Revenue Trend (30d)</span>}>
+          <Card title={<span style={{ color: '#1f2937' }}>Revenue Trend (30d)</span>}>
             <Space size={48} style={{ marginBottom: 16 }}>
               <Statistic title="MRR" value={stats.revenue.mrr} prefix="$" valueStyle={{ color: BRAND }} />
               <Statistic title="ARR" value={stats.revenue.arr} prefix="$" valueStyle={{ color: BRAND }} />
@@ -131,7 +131,7 @@ export default function AdminDashboardPage() {
           </Card>
         </Col>
         <Col xs={24} lg={8}>
-          <Card title={<span style={{ color: '#fff' }}>Plan Distribution</span>}>
+          <Card title={<span style={{ color: '#1f2937' }}>Plan Distribution</span>}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
               <DonutChart data={planSlices} />
               <Legend data={planSlices} />
@@ -143,12 +143,12 @@ export default function AdminDashboardPage() {
       {/* ── Growth ──────────────────────────────────────────────────────────── */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={12}>
-          <Card title={<span style={{ color: '#fff' }}>User Signups (30d)</span>}>
+          <Card title={<span style={{ color: '#1f2937' }}>User Signups (30d)</span>}>
             <BarChart data={stats.signups_trend.map((t) => ({ label: t.date.slice(5), value: t.count }))} />
           </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card title={<span style={{ color: '#fff' }}>Renders (30d)</span>}>
+          <Card title={<span style={{ color: '#1f2937' }}>Renders (30d)</span>}>
             <LineChart
               labels={stats.renders_trend.map((t) => t.date.slice(5))}
               series={[{ label: 'Renders', color: '#722ed1', points: stats.renders_trend.map((t) => t.count) }]}
@@ -161,7 +161,7 @@ export default function AdminDashboardPage() {
       {/* ── Quick actions + activity ────────────────────────────────────────── */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} lg={8}>
-          <Card title={<span style={{ color: '#fff' }}>Quick Actions</span>}>
+          <Card title={<span style={{ color: '#1f2937' }}>Quick Actions</span>}>
             <Space direction="vertical" style={{ width: '100%' }}>
               <Button block icon={<TeamOutlined />} onClick={() => router.push('/admin/users')}>
                 View All Users
@@ -179,7 +179,7 @@ export default function AdminDashboardPage() {
           </Card>
         </Col>
         <Col xs={24} lg={16}>
-          <Card title={<span style={{ color: '#fff' }}>Recent Activity</span>}>
+          <Card title={<span style={{ color: '#1f2937' }}>Recent Activity</span>}>
             <List
               dataSource={logs}
               locale={{ emptyText: 'No admin activity yet' }}
@@ -187,7 +187,7 @@ export default function AdminDashboardPage() {
                 <List.Item>
                   <Space>
                     <Tag color="green">{log.action}</Tag>
-                    <Text style={{ color: '#ccc' }}>
+                    <Text style={{ color: '#374151' }}>
                       {log.target_type ? `${log.target_type}:${log.target_id ?? ''}` : '—'}
                     </Text>
                     <Text type="secondary">by {log.admin_name}</Text>
@@ -220,7 +220,7 @@ function Kpi({
   accent?: boolean
   danger?: boolean
 }) {
-  const color = danger ? '#ff4d4f' : accent ? BRAND : '#fff'
+  const color = danger ? '#ff4d4f' : accent ? BRAND : '#1f2937'
   return (
     <Col xs={12} lg={6}>
       <Card>

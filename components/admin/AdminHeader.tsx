@@ -25,8 +25,8 @@ export default function AdminHeader() {
   return (
     <Layout.Header
       style={{
-        background: '#141414',
-        borderBottom: '1px solid #222',
+        background: '#ffffff',
+        borderBottom: '1px solid #e5e7eb',
         display: 'flex',
         alignItems: 'center',
         padding: '0 24px',
@@ -34,7 +34,7 @@ export default function AdminHeader() {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
-        <span style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Admin Panel</span>
+        <span style={{ color: '#1f2937', fontWeight: 700, fontSize: 16 }}>Admin Panel</span>
         <Tag color="error" style={{ margin: 0 }}>
           RESTRICTED
         </Tag>
@@ -55,14 +55,14 @@ export default function AdminHeader() {
         </Tag>
 
         <Badge dot>
-          <Button type="text" icon={<BellOutlined style={{ color: '#aaa' }} />} aria-label="System alerts" />
+          <Button type="text" icon={<BellOutlined style={{ color: '#6b7280' }} />} aria-label="System alerts" />
         </Badge>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Avatar size={32} src={user?.avatar_url ?? undefined} style={{ background: BRAND }}>
             {user?.full_name?.[0]?.toUpperCase() ?? <UserOutlined />}
           </Avatar>
-          <span style={{ color: '#ddd', fontSize: 13 }}>{user?.full_name ?? user?.email ?? '…'}</span>
+          <span style={{ color: '#374151', fontSize: 13 }}>{user?.full_name ?? user?.email ?? '…'}</span>
         </div>
       </div>
     </Layout.Header>

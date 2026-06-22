@@ -208,7 +208,7 @@ export default function AdminUsersPage() {
   return (
     <div>
       <Space style={{ marginBottom: 16 }}>
-        <Title level={3} style={{ color: '#fff', margin: 0 }}>
+        <Title level={3} style={{ color: '#1f2937', margin: 0 }}>
           Users
         </Title>
         <Badge count={total} overflowCount={99999} style={{ backgroundColor: BRAND }} />
@@ -300,7 +300,7 @@ export default function AdminUsersPage() {
               width: 160,
               render: (_, u) => (
                 <div>
-                  <Text style={{ fontSize: 12, color: '#aaa' }}>
+                  <Text style={{ fontSize: 12, color: '#6b7280' }}>
                     {u.render_count.toLocaleString()} / {u.render_limit.toLocaleString()}
                   </Text>
                   <Progress

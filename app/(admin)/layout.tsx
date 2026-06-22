@@ -9,16 +9,15 @@ import AdminHeader from '@/components/admin/AdminHeader'
 const BRAND = '#2da01d'
 
 const adminTheme = {
-  algorithm: theme.darkAlgorithm,
+  algorithm: theme.defaultAlgorithm,
   token: {
     colorPrimary: BRAND,
     colorLink: BRAND,
-    colorBgBase: '#0f0f0f',
     borderRadius: 8,
   },
   components: {
-    Layout: { siderBg: '#141414', headerBg: '#141414', bodyBg: '#0f0f0f' },
-    Menu: { darkItemBg: '#141414', darkItemSelectedBg: 'rgba(45,160,29,0.18)', darkItemSelectedColor: BRAND },
+    Layout: { siderBg: '#ffffff', headerBg: '#ffffff', bodyBg: '#f9fafb' },
+    Menu: { itemSelectedBg: 'rgba(45,160,29,0.12)', itemSelectedColor: BRAND },
   },
 }
 
@@ -56,13 +55,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <ConfigProvider theme={adminTheme}>
       {checking || !allowed ? (
-        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0f0f0f' }}>
+        <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb' }}>
           <Spin size="large" />
         </div>
       ) : (
-        <Layout style={{ minHeight: '100vh', background: '#0f0f0f' }}>
+        <Layout style={{ minHeight: '100vh', background: '#f9fafb' }}>
           <AdminSidebar />
-          <Layout style={{ background: '#0f0f0f' }}>
+          <Layout style={{ background: '#f9fafb' }}>
             <AdminHeader />
             <Layout.Content style={{ padding: 24 }}>{children}</Layout.Content>
           </Layout>
