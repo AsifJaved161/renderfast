@@ -21,6 +21,7 @@ export const SETTING_KEYS = {
   queueThrottleMs: 'queue_throttle_ms',
   hardCacheTtlDays: 'hard_cache_ttl_days',
   blockResources: 'block_resources',
+  googleApiKey: 'google_api_key',
 } as const
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS]
@@ -84,6 +85,11 @@ export interface CloudflareConfig {
   apiToken: string
   kvNamespaceId: string
   browserRenderingUrl: string
+}
+
+// Google API key (Chrome UX Report / PageSpeed). DB override → env → empty.
+export async function getGoogleApiKey(): Promise<string> {
+  return str(SETTING_KEYS.googleApiKey, 'GOOGLE_API_KEY')
 }
 
 export async function getCloudflareConfig(): Promise<CloudflareConfig> {

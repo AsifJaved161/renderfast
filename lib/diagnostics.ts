@@ -16,6 +16,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabaseAdmin } from '@/lib/supabase'
 import { extractGeoSignals, computeAiCitationScore, type GeoSignals } from '@/lib/geo-signals'
+import { fetchCoreWebVitals, type CoreWebVitals } from '@/lib/web-vitals'
 
 // Master on/off switch — set RENDER_DIAGNOSTICS=off to disable with zero overhead.
 export const DIAGNOSTICS_ENABLED = process.env.RENDER_DIAGNOSTICS !== 'off'
@@ -74,6 +75,7 @@ export interface DiagnosticInput {
   renderTimeMs: number
   signals?: Partial<RenderSignals> // optional Part-1 data from a Playwright render
   rawHtml?: string | null // pre-fetched raw HTML — skips the internal origin fetch
+  includeWebVitals?: boolean // fetch Core Web Vitals (CrUX) — scans only, not the hot path
 }
 
 // ── Text extraction ──────────────────────────────────────────────────────────
@@ -172,6 +174,7 @@ async function persistDiagnostic(row: {
   render_time_ms: number
   geo_signals: GeoSignals
   ai_citation_score: number
+  core_web_vitals: CoreWebVitals | null
 }) {
   await supabaseAdmin.from('render_diagnostics').insert({
     ...row,
@@ -237,6 +240,17 @@ export async function runDiagnostics(input: DiagnosticInput): Promise<void> {
   const geoSignals = extractGeoSignals(renderedHtml)
   const { score: aiCitationScore } = computeAiCitationScore(geoSignals)
 
+  // Core Web Vitals (real field data) — fetched on explicit scans only, and
+  // always optional: any failure leaves it null without affecting diagnostics.
+  let coreWebVitals: CoreWebVitals | null = null
+  if (input.includeWebVitals) {
+    try {
+      coreWebVitals = await fetchCoreWebVitals(input.url)
+    } catch {
+      /* CrUX unavailable / no key / no data → stays null */
+    }
+  }
+
   await persistDiagnostic({
     site_id: input.siteId,
     url: input.url,
@@ -248,6 +262,7 @@ export async function runDiagnostics(input: DiagnosticInput): Promise<void> {
     render_time_ms: input.renderTimeMs,
     geo_signals: geoSignals,
     ai_citation_score: aiCitationScore,
+    core_web_vitals: coreWebVitals,
   })
 }
 

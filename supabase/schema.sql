@@ -275,7 +275,8 @@ create table if not exists public.render_diagnostics (
   render_succeeded        boolean not null default true,
   render_time_ms          integer,
   geo_signals             jsonb,
-  ai_citation_score       numeric
+  ai_citation_score       numeric,
+  core_web_vitals         jsonb
 );
 
 -- ══════════════════════════════════════════════════════════════════════════════

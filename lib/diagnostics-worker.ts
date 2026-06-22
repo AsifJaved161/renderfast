@@ -131,7 +131,9 @@ export async function processDiagnosticsJob(jobId: string): Promise<void> {
           try {
             const { html, renderTimeMs } = await renderPage(url)
             rendered++ // a render happened → counts against quota
-            await runDiagnostics({ siteId: job.site_id, url, renderedHtml: html ?? '', renderTimeMs })
+            // includeWebVitals: this is an explicit scan, so also fetch CrUX
+            // Core Web Vitals (the hot proxy path leaves it off).
+            await runDiagnostics({ siteId: job.site_id, url, renderedHtml: html ?? '', renderTimeMs, includeWebVitals: true })
           } catch (err) {
             console.error('[diagnostics-worker url]:', url, err)
           } finally {
