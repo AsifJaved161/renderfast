@@ -54,6 +54,46 @@ async function send(to: string, subject: string, html: string) {
   }
 }
 
+// ── Periodic digest ──────────────────────────────────────────────────────────
+interface DigestData {
+  days: number
+  siteCount: number
+  botRequests: number
+  cacheHitRate: number
+  healthScore: number | null
+  aiCitation: number | null
+  costUsd: number
+}
+export async function sendDigestEmail(user: DbUser | { email: string; full_name?: string | null }, d: DigestData) {
+  const period = d.days <= 7 ? 'this week' : d.days <= 31 ? 'this month' : `the last ${d.days} days`
+  const name = ('full_name' in user ? user.full_name : null) ?? 'there'
+  const tile = (label: string, value: string, sub = '') =>
+    `<td style="padding:8px">
+       <div style="background:#f6f8fa;border:1px solid #eaecef;border-radius:10px;padding:16px;text-align:center">
+         <div style="font-size:26px;font-weight:800;color:${BRAND}">${value}</div>
+         <div style="font-size:12px;color:#555;margin-top:4px">${label}</div>
+         ${sub ? `<div style="font-size:11px;color:#999;margin-top:2px">${sub}</div>` : ''}
+       </div>
+     </td>`
+  const html = shell(
+    `Your RenderFast digest`,
+    `<p>Hi ${name}, here's how your ${d.siteCount} site${d.siteCount === 1 ? '' : 's'} performed ${period}:</p>
+     <table width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0"><tr>
+       ${tile('Bot Visibility Score', d.healthScore != null ? `${d.healthScore}/100` : '—')}
+       ${tile('AI Citation Readiness', d.aiCitation != null ? `${d.aiCitation}%` : '—')}
+       ${tile('Bot Bandwidth Cost', `$${d.costUsd.toFixed(2)}`, 'estimated')}
+     </tr></table>
+     <table width="100%" cellpadding="0" cellspacing="0"><tr>
+       ${tile('Bot Requests', d.botRequests.toLocaleString())}
+       ${tile('Cache Hit Rate', `${d.cacheHitRate}%`)}
+       ${tile('Sites', String(d.siteCount))}
+     </tr></table>
+     <p style="color:#444;margin-top:12px">Search &amp; AI crawlers are seeing your fully-rendered content — keep it up.</p>
+     ${button(`${APP_URL}/bot-visibility`, 'View full report')}`
+  )
+  await send(user.email, `Your RenderFast digest — ${period}`, html)
+}
+
 // ── Team invite ──────────────────────────────────────────────────────────────
 export async function sendTeamInviteEmail(toEmail: string, inviterName: string, role: string, token: string) {
   const html = shell(

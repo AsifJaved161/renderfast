@@ -27,6 +27,7 @@ create table if not exists public.users (
   banned_at              timestamptz,
   last_login_at          timestamptz,
   notes                  text,
+  last_digest_sent_at    timestamptz,
   created_at             timestamptz not null default now(),
   updated_at             timestamptz not null default now()
 );
