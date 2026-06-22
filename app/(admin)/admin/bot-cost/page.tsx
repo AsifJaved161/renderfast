@@ -33,6 +33,7 @@ interface HistoryRow {
   effective_from: string
   effective_to: string | null
   set_by: string | null
+  set_by_email?: string | null
   created_at: string
 }
 interface RateData {
@@ -199,6 +200,12 @@ export default function AdminBotCostPage() {
                   dataIndex: 'effective_to',
                   render: (v: string | null) =>
                     v ? v : <Tag color="green">active</Tag>,
+                },
+                {
+                  title: 'Set by',
+                  dataIndex: 'set_by_email',
+                  render: (v: string | null | undefined) =>
+                    v ? <Text style={{ fontSize: 12 }}>{v}</Text> : <Tag>system</Tag>,
                 },
               ]}
             />
