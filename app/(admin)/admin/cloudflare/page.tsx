@@ -24,6 +24,8 @@ import {
   SaveOutlined,
   ReloadOutlined,
   RiseOutlined,
+  CloudDownloadOutlined,
+  ExportOutlined,
 } from '@ant-design/icons'
 
 const BRAND = '#2da01d'
@@ -55,6 +57,16 @@ interface Data {
   usage: Usage
   limits: Limits
   derived: Derived
+  dashboardUrl?: string
+}
+
+// Live KV figures fetched on demand from Cloudflare's Analytics API.
+interface LiveKv {
+  bytes: number | null
+  keys: number | null
+  readsToday: number
+  writesToday: number
+  deletesToday: number
 }
 
 const n = (x: number) => x.toLocaleString()
@@ -71,6 +83,29 @@ export default function AdminCloudflarePage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState<Limits | null>(null)
+  // Opt-in live data (null until the admin presses "Refresh from Cloudflare").
+  const [live, setLive] = useState<{ kv: LiveKv; fetchedAt: string } | null>(null)
+  const [liveLoading, setLiveLoading] = useState(false)
+
+  // Pull authoritative KV numbers from Cloudflare. Fully isolated: on any failure
+  // it just warns and leaves the DB-based view untouched.
+  async function fetchLive() {
+    setLiveLoading(true)
+    try {
+      const res = await fetch('/api/admin/cloudflare-usage/live')
+      const j = await res.json().catch(() => ({}))
+      if (j?.ok) {
+        setLive({ kv: j.kv, fetchedAt: j.fetchedAt })
+        message.success('Live Cloudflare data loaded')
+      } else {
+        message.warning(j?.error ?? 'Live data unavailable — showing estimate')
+      }
+    } catch {
+      message.warning('Live data unavailable — showing estimate')
+    } finally {
+      setLiveLoading(false)
+    }
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -117,6 +152,21 @@ export default function AdminCloudflarePage() {
 
   const { usage, derived } = data
 
+  // KV display values: prefer live (authoritative) when present, else DB estimate.
+  // Percentages are recomputed against the configured limits so bars stay correct.
+  const pctOf = (used: number, limit: number) => (limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0)
+  const liveOn = !!live
+  const kvBytes = liveOn && live!.kv.bytes != null ? live!.kv.bytes : usage.kv.bytes
+  const kvKeys = liveOn && live!.kv.keys != null ? live!.kv.keys : usage.kv.keys
+  const kvReads = liveOn ? live!.kv.readsToday : usage.kv.readsToday
+  const kvWrites = liveOn ? live!.kv.writesToday : usage.kv.writesToday
+  const kvStorageLimitBytes = form.kvStorageGb * GB
+  const kvStoragePct = liveOn ? pctOf(kvBytes, kvStorageLimitBytes) : derived.kvStoragePct
+  const kvStorageRemaining = liveOn ? Math.max(0, kvStorageLimitBytes - kvBytes) : derived.kvStorageRemainingBytes
+  const kvReadsPct = liveOn ? pctOf(kvReads, form.kvReadsDay) : derived.kvReadsPct
+  const kvWritesPct = liveOn ? pctOf(kvWrites, form.kvWritesDay) : derived.kvWritesPct
+  const SourceTag = liveOn ? <Tag color="green">Live</Tag> : <Tag>Estimate</Tag>
+
   return (
     <div style={{ maxWidth: 1100 }}>
       <Title level={3} style={{ marginTop: 0 }}>
@@ -130,11 +180,28 @@ export default function AdminCloudflarePage() {
         our own records (no per-client Cloudflare calls), so it stays accurate at any scale.
       </Paragraph>
 
-      <Space style={{ marginBottom: 16 }}>
+      <Space style={{ marginBottom: 16 }} wrap>
         <Button icon={<ReloadOutlined />} onClick={load}>
           Refresh
         </Button>
+        <Button icon={<CloudDownloadOutlined />} loading={liveLoading} onClick={fetchLive}>
+          Refresh from Cloudflare (live)
+        </Button>
+        {data.dashboardUrl && (
+          <Button type="link" icon={<ExportOutlined />} href={data.dashboardUrl} target="_blank" rel="noopener noreferrer">
+            Open in Cloudflare
+          </Button>
+        )}
       </Space>
+
+      {liveOn && (
+        <Alert
+          type="success"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={`KV figures below are live from Cloudflare (as of ${new Date(live!.fetchedAt).toLocaleString()}). Browser Rendering is from our own records.`}
+        />
+      )}
 
       {/* ── Capacity estimate (scale planning) ──────────────────────────────── */}
       <Alert
@@ -174,33 +241,33 @@ export default function AdminCloudflarePage() {
         </Col>
 
         <Col xs={24} lg={12}>
-          <Card title={<Space><DatabaseOutlined /> KV Storage</Space>}>
-            <Progress percent={derived.kvStoragePct} strokeColor={barColor(derived.kvStoragePct)} />
+          <Card title={<Space><DatabaseOutlined /> KV Storage {SourceTag}</Space>}>
+            <Progress percent={kvStoragePct} strokeColor={barColor(kvStoragePct)} />
             <Text>
-              {fmtBytes(usage.kv.bytes)} / {form.kvStorageGb} GB used
+              {fmtBytes(kvBytes)} / {form.kvStorageGb} GB used
             </Text>
             <div>
               <Text type="secondary">
-                {fmtBytes(derived.kvStorageRemainingBytes)} remaining · {n(usage.kv.keys)} keys (cached pages)
+                {fmtBytes(kvStorageRemaining)} remaining · {n(kvKeys)} keys (cached pages)
               </Text>
             </div>
           </Card>
         </Col>
 
         <Col xs={24} lg={12}>
-          <Card title={<Space><DatabaseOutlined /> KV Reads (today)</Space>}>
-            <Progress percent={derived.kvReadsPct} strokeColor={barColor(derived.kvReadsPct)} />
+          <Card title={<Space><DatabaseOutlined /> KV Reads (today) {SourceTag}</Space>}>
+            <Progress percent={kvReadsPct} strokeColor={barColor(kvReadsPct)} />
             <Text>
-              {n(usage.kv.readsToday)} / {n(form.kvReadsDay)} reads — cache hits
+              {n(kvReads)} / {n(form.kvReadsDay)} reads{liveOn ? '' : ' — cache hits'}
             </Text>
           </Card>
         </Col>
 
         <Col xs={24} lg={12}>
-          <Card title={<Space><DatabaseOutlined /> KV Writes (today)</Space>}>
-            <Progress percent={derived.kvWritesPct} strokeColor={barColor(derived.kvWritesPct)} />
+          <Card title={<Space><DatabaseOutlined /> KV Writes (today) {SourceTag}</Space>}>
+            <Progress percent={kvWritesPct} strokeColor={barColor(kvWritesPct)} />
             <Text>
-              {n(usage.kv.writesToday)} / {n(form.kvWritesDay)} writes — fresh renders stored
+              {n(kvWrites)} / {n(form.kvWritesDay)} writes{liveOn ? '' : ' — fresh renders stored'}
             </Text>
           </Card>
         </Col>
@@ -210,8 +277,8 @@ export default function AdminCloudflarePage() {
       <Card style={{ marginTop: 16 }}>
         <Row gutter={[16, 16]}>
           <Col xs={12} lg={6}><Statistic title="Renders all-time" value={usage.renders.all} /></Col>
-          <Col xs={12} lg={6}><Statistic title="Cached pages (KV keys)" value={usage.kv.keys} /></Col>
-          <Col xs={12} lg={6}><Statistic title="KV storage" value={fmtBytes(usage.kv.bytes)} /></Col>
+          <Col xs={12} lg={6}><Statistic title="Cached pages (KV keys)" value={kvKeys} /></Col>
+          <Col xs={12} lg={6}><Statistic title="KV storage" value={fmtBytes(kvBytes)} /></Col>
           <Col xs={12} lg={6}><Statistic title="Total sites" value={usage.totalSites} /></Col>
         </Row>
       </Card>

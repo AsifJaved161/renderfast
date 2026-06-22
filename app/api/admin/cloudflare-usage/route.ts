@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdmin, logAdminAction, adminAuthError } from '@/lib/admin-auth'
+import { getCloudflareConfig } from '@/lib/app-config'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -70,6 +71,13 @@ export async function GET() {
     const limits = await readLimits()
     const kvStorageLimitBytes = limits.kvStorageGb * GB
 
+    // Deep-link to the Cloudflare dashboard (KV namespace if known) — opens in a
+    // new tab so the admin can see the authoritative analytics there.
+    const cf = await getCloudflareConfig()
+    const dashboardUrl = cf.accountId
+      ? `https://dash.cloudflare.com/${cf.accountId}/workers/kv/namespaces${cf.kvNamespaceId ? `/${cf.kvNamespaceId}` : ''}`
+      : 'https://dash.cloudflare.com/'
+
     // Capacity planning for scale: how many MORE sites the remaining monthly
     // render budget can support at the current average renders-per-site.
     const avgRendersPerSite =
@@ -81,6 +89,7 @@ export async function GET() {
     return NextResponse.json({
       usage,
       limits,
+      dashboardUrl,
       derived: {
         renderMonthPct: pct(usage.renders.month, limits.renderMonth),
         renderMonthRemaining,
