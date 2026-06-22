@@ -54,6 +54,19 @@ async function send(to: string, subject: string, html: string) {
   }
 }
 
+// ── Team invite ──────────────────────────────────────────────────────────────
+export async function sendTeamInviteEmail(toEmail: string, inviterName: string, role: string, token: string) {
+  const html = shell(
+    `You've been invited to a RenderFast team`,
+    `<p><strong>${inviterName}</strong> invited you to join their RenderFast account as a
+     <strong>${role}</strong>.</p>
+     <p>Sign in (or sign up) with <strong>${toEmail}</strong>, then open your Team page to accept.</p>
+     ${button(`${APP_URL}/team?invite=${token}`, 'Accept invitation')}
+     <p style="font-size:12px;color:#999;margin-top:16px">If you weren't expecting this, you can ignore this email.</p>`
+  )
+  await send(toEmail, `${inviterName} invited you to their RenderFast team`, html)
+}
+
 // ── Welcome ────────────────────────────────────────────────────────────────
 export async function sendWelcomeEmail(user: DbUser) {
   const html = shell(
