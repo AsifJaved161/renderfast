@@ -461,6 +461,13 @@ function StepApiKey({
   -H "Content-Type: application/json" \\
   -d '{"url":"https://example.com"}'`}
           />
+          <CodeBlock
+            title="Instant recache on publish (call from your CMS/deploy hook)"
+            code={`curl -X POST ${APP_URL}/api/recache \\
+  -H "x-api-key: ${visible ? apiKey : 'YOUR_API_KEY'}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"urls":["https://your-domain.com/just-published-post"]}'`}
+          />
         </>
       )}
       <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between' }}>
