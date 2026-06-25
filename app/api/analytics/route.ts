@@ -34,7 +34,6 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
   if (siteId) rq = rq.eq('site_id', siteId)
   if (botType) rq = rq.eq('bot_type', botType)
-  const { data: renders = [] } = await rq
 
   // ── Fetch bot visits ────────────────────────────────────────────────────────
   let bq = supabaseAdmin
@@ -45,14 +44,19 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
   if (siteId) bq = bq.eq('site_id', siteId)
   if (botType) bq = bq.eq('bot_type', botType)
-  const { data: visits = [] } = await bq
 
-  // ── Usage stats (always real) ────────────────────────────────────────────────
-  const { data: user } = await supabaseAdmin
-    .from('users')
-    .select('render_count, render_limit, monthly_reset_at')
-    .eq('id', uid)
-    .single()
+  // The three queries are independent — run them in parallel (one round-trip
+  // instead of three sequential ones) so the dashboard skeleton clears faster.
+  const [{ data: renders = [] }, { data: visits = [] }, { data: user }] =
+    await Promise.all([
+      rq,
+      bq,
+      supabaseAdmin
+        .from('users')
+        .select('render_count, render_limit, monthly_reset_at')
+        .eq('id', uid)
+        .single(),
+    ])
 
   const usageStats = {
     renderCount: user?.render_count ?? 0,

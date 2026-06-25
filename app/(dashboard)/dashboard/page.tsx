@@ -31,6 +31,7 @@ import { DonutChart, Legend, BarChart, MetricTilesChart } from '@/components/cha
 import { StatTitle } from '@/components/ui/StatTitle'
 import { BotCostWidget } from '@/components/dashboard/BotCostWidget'
 import { useDashboard } from '@/lib/dashboard-context'
+import { readCache, writeCache } from '@/lib/swr-cache'
 
 const BRAND = '#2da01d'
 const { Title, Text } = Typography
@@ -115,19 +116,26 @@ export default function DashboardPage() {
   }, [router])
 
   const load = useCallback(async () => {
-    setLoading(true)
+    const params = new URLSearchParams()
+    if (siteId) params.set('site_id', siteId)
+    if (range) {
+      params.set('start_date', range[0].toISOString())
+      params.set('end_date', range[1].toISOString())
+    }
+    // Stale-while-revalidate: show cached data instantly (no skeleton) if we've
+    // seen this view before this session, then refresh in the background.
+    const cacheKey = `rf_dash_${params.toString()}`
+    const cached = readCache<Analytics>(cacheKey)
+    if (cached) setData(cached)
+    setLoading(!cached)
     try {
-      const params = new URLSearchParams()
-      if (siteId) params.set('site_id', siteId)
-      if (range) {
-        params.set('start_date', range[0].toISOString())
-        params.set('end_date', range[1].toISOString())
-      }
       const res = await fetch(`/api/analytics?${params}`)
       const json: Analytics = await res.json()
-      setData(json?.summary ? json : EMPTY)
+      const next = json?.summary ? json : EMPTY
+      setData(next)
+      writeCache(cacheKey, next)
     } catch {
-      setData(EMPTY)
+      if (!cached) setData(EMPTY)
     } finally {
       setLoading(false)
     }

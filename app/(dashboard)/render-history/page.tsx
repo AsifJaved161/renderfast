@@ -20,6 +20,7 @@ import {
 import { DownloadOutlined, CodeOutlined } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import { useDashboard } from '@/lib/dashboard-context'
+import { readCache, writeCache } from '@/lib/swr-cache'
 
 const BRAND = '#2da01d'
 const { Title, Paragraph } = Typography
@@ -71,20 +72,26 @@ export default function RenderHistoryPage() {
   const [previewHtml, setPreviewHtml] = useState<{ url: string; html: string } | null>(null)
 
   const load = useCallback(async () => {
-    setLoading(true)
+    const params = new URLSearchParams({ type: 'history', limit: '200' })
+    if (siteId) params.set('site_id', siteId)
+    if (botType) params.set('bot_type', botType)
+    if (range) {
+      params.set('start_date', range[0].toISOString())
+      params.set('end_date', range[1].toISOString())
+    }
+    // Stale-while-revalidate: instant render from this session's cache, then refresh.
+    const cacheKey = `rf_history_${params.toString()}`
+    const cached = readCache<HistoryRow[]>(cacheKey)
+    if (cached) setRows(cached)
+    setLoading(!cached)
     try {
-      const params = new URLSearchParams({ type: 'history', limit: '200' })
-      if (siteId) params.set('site_id', siteId)
-      if (botType) params.set('bot_type', botType)
-      if (range) {
-        params.set('start_date', range[0].toISOString())
-        params.set('end_date', range[1].toISOString())
-      }
       const res = await fetch(`/api/analytics?${params}`)
       const json = await res.json()
-      setRows(json.renderHistory ?? [])
+      const next: HistoryRow[] = json.renderHistory ?? []
+      setRows(next)
+      writeCache(cacheKey, next)
     } catch {
-      message.error('Failed to load history')
+      if (!cached) message.error('Failed to load history')
     } finally {
       setLoading(false)
     }

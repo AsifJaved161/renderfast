@@ -27,6 +27,7 @@ import type { Dayjs } from 'dayjs'
 import { DonutChart, Legend, BarChart, MetricTilesChart } from '@/components/charts/Charts'
 import { StatTitle } from '@/components/ui/StatTitle'
 import { useDashboard } from '@/lib/dashboard-context'
+import { readCache, writeCache } from '@/lib/swr-cache'
 
 const BRAND = '#2da01d'
 const { Title } = Typography
@@ -74,20 +75,26 @@ export default function CdnAnalyticsPage() {
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null)
 
   const load = useCallback(async () => {
-    setLoading(true)
+    const params = new URLSearchParams()
+    if (siteId) params.set('site_id', siteId)
+    if (botType) params.set('bot_type', botType)
+    if (range) {
+      params.set('start_date', range[0].toISOString())
+      params.set('end_date', range[1].toISOString())
+    }
+    // Stale-while-revalidate: instant render from this session's cache, then refresh.
+    const cacheKey = `rf_cdn_${params.toString()}`
+    const cached = readCache<Analytics>(cacheKey)
+    if (cached) setData(cached)
+    setLoading(!cached)
     try {
-      const params = new URLSearchParams()
-      if (siteId) params.set('site_id', siteId)
-      if (botType) params.set('bot_type', botType)
-      if (range) {
-        params.set('start_date', range[0].toISOString())
-        params.set('end_date', range[1].toISOString())
-      }
       const res = await fetch(`/api/analytics?${params}`)
       const json: Analytics = await res.json()
-      setData(json?.summary ? json : EMPTY)
+      const next = json?.summary ? json : EMPTY
+      setData(next)
+      writeCache(cacheKey, next)
     } catch {
-      setData(EMPTY)
+      if (!cached) setData(EMPTY)
     } finally {
       setLoading(false)
     }
