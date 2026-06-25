@@ -55,10 +55,15 @@ export async function GET(req: NextRequest) {
   const siteIds = (sites ?? []).map((s) => s.id)
   if (siteIds.length === 0) return NextResponse.json({ data: [] })
 
+  // A requested site_id is honoured only if the user owns it — otherwise this
+  // would return another account's broken links.
+  if (siteId && !siteIds.includes(siteId)) return NextResponse.json({ data: [] })
+  const filterIds = siteId ? [siteId] : siteIds
+
   let query = supabaseAdmin
     .from('broken_links')
     .select('*')
-    .in('site_id', siteId ? [siteId] : siteIds)
+    .in('site_id', filterIds)
     .order('detected_at', { ascending: false })
 
   const { data, error } = await query
@@ -153,11 +158,23 @@ export async function PATCH(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
-  const { error } = await supabaseAdmin
+  // Ownership: only update the row if its site belongs to this user (broken_links
+  // has no user_id column, so scope by the user's site ids).
+  const { data: sites } = await supabaseAdmin
+    .from('sites')
+    .select('id')
+    .eq('user_id', uid)
+  const siteIds = (sites ?? []).map((s) => s.id)
+  if (siteIds.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const { data, error } = await supabaseAdmin
     .from('broken_links')
     .update({ resolved: true })
     .eq('id', id)
+    .in('site_id', siteIds)
+    .select('id')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (!data || data.length === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json({ success: true })
 }

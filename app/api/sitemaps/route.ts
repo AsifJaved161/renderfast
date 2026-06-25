@@ -44,6 +44,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'site_id and sitemap_url required' }, { status: 400 })
     }
 
+    // Confirm the site belongs to this user.
+    const { data: site } = await supabaseAdmin
+      .from('sites')
+      .select('id')
+      .eq('id', site_id)
+      .eq('user_id', uid)
+      .maybeSingle()
+    if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 })
+
     const { data, error } = await supabaseAdmin
       .from('sitemaps')
       .insert({ user_id: uid, site_id, sitemap_url, status: 'active' })

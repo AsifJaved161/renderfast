@@ -70,6 +70,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'site_id and urls[] required' }, { status: 400 })
     }
 
+    // Confirm the site belongs to this user before queueing work against it.
+    const { data: site } = await supabaseAdmin
+      .from('sites')
+      .select('id')
+      .eq('id', site_id)
+      .eq('user_id', uid)
+      .maybeSingle()
+    if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 })
+
     const rows = urls.map((url: string) => ({
       site_id,
       user_id: uid,

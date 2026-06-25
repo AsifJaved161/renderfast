@@ -24,6 +24,21 @@ export async function GET(req: NextRequest) {
   const startDate =
     searchParams.get('start_date') ?? new Date(Date.now() - 30 * DAY).toISOString()
 
+  // Resolve the sites this user owns. The `bot_visits` table has no user_id
+  // column, so it MUST be scoped to these site ids — otherwise the query would
+  // return every account's bot traffic (cross-account data leak). A requested
+  // site_id is honoured only if the user actually owns it.
+  const { data: ownedSites } = await supabaseAdmin
+    .from('sites')
+    .select('id')
+    .eq('user_id', uid)
+  const ownedIds = (ownedSites ?? []).map((s) => s.id)
+  if (siteId && !ownedIds.includes(siteId)) {
+    return NextResponse.json(emptyResponse(zeroUsage()))
+  }
+  // Site ids to aggregate over: the one requested (already verified owned) or all.
+  const scopeIds = siteId ? [siteId] : ownedIds
+
   // ── Fetch renders ───────────────────────────────────────────────────────────
   let rq = supabaseAdmin
     .from('renders')
@@ -35,14 +50,14 @@ export async function GET(req: NextRequest) {
   if (siteId) rq = rq.eq('site_id', siteId)
   if (botType) rq = rq.eq('bot_type', botType)
 
-  // ── Fetch bot visits ────────────────────────────────────────────────────────
+  // ── Fetch bot visits (scoped to the user's own sites) ─────────────────────────
   let bq = supabaseAdmin
     .from('bot_visits')
     .select('*')
+    .in('site_id', scopeIds)
     .gte('created_at', startDate)
     .lte('created_at', endDate)
     .order('created_at', { ascending: false })
-  if (siteId) bq = bq.eq('site_id', siteId)
   if (botType) bq = bq.eq('bot_type', botType)
 
   // The three queries are independent — run them in parallel (one round-trip
@@ -209,6 +224,17 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     console.error('[ANALYTICS_GET]:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
+}
+
+// Zeroed usage block — used when the requested site isn't owned by the user, so
+// no per-account figures are revealed.
+function zeroUsage() {
+  return {
+    renderCount: 0,
+    renderLimit: 1000,
+    percentUsed: 0,
+    resetAt: new Date(Date.now() + 30 * DAY).toISOString(),
   }
 }
 
