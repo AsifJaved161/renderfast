@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import {
   Steps,
   Card,
@@ -41,15 +42,11 @@ export default function IntegrationWizardPage() {
   const [current, setCurrent] = useState(0)
   const [site, setSite] = useState<{ id: string; domain: string } | null>(null)
   const [method, setMethod] = useState<Method>('wordpress')
-  const [apiKey, setApiKey] = useState<string>('')
 
-  // Fetch the API key once so Step 2 snippets can embed it.
-  useEffect(() => {
-    fetch('/api/auth/me')
-      .then((r) => r.json())
-      .then((d) => setApiKey(d.user?.api_key ?? ''))
-      .catch(() => {})
-  }, [])
+  // API key (for Step 2 snippets) via SWR — cached & deduped with the app's other
+  // /api/auth/me reads, so it's usually already in cache here.
+  const { data: meData } = useSWR<{ user?: { api_key?: string } }>('/api/auth/me')
+  const apiKey = meData?.user?.api_key ?? ''
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>
@@ -85,8 +82,6 @@ export default function IntegrationWizardPage() {
       )}
       {current === 2 && (
         <StepApiKey
-          apiKey={apiKey}
-          setApiKey={setApiKey}
           onBack={() => setCurrent(1)}
           onNext={() => setCurrent(3)}
         />
@@ -400,31 +395,17 @@ function StepMethod({
 
 // ── Step 3 ─────────────────────────────────────────────────────────────────
 function StepApiKey({
-  apiKey,
-  setApiKey,
   onBack,
   onNext,
 }: {
-  apiKey: string
-  setApiKey: (k: string) => void
   onBack: () => void
   onNext: () => void
 }) {
-  const [loading, setLoading] = useState(!apiKey)
   const [visible, setVisible] = useState(false)
 
-  useEffect(() => {
-    if (apiKey) return
-    ;(async () => {
-      try {
-        const res = await fetch('/api/auth/me')
-        const data = await res.json()
-        setApiKey(data.user?.api_key ?? '')
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [apiKey, setApiKey])
+  // Same cached /api/auth/me key as the parent — served from cache instantly.
+  const { data, isLoading: loading } = useSWR<{ user?: { api_key?: string } }>('/api/auth/me')
+  const apiKey = data?.user?.api_key ?? ''
 
   const masked = apiKey ? apiKey.slice(0, 6) + '••••••••••••••••' : ''
 

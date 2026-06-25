@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import useSWR from 'swr'
 import {
   Row,
   Col,
@@ -237,35 +238,17 @@ export default function BotVisibilityPage() {
   const { sites, selectedSiteId, setSelectedSiteId } = useDashboard()
   const siteId = selectedSiteId ?? undefined
 
-  const [loading, setLoading] = useState(false)
   const [job, setJob] = useState<ScanJob | null>(null)
-  const [data, setData] = useState<DiagSummary | null>(null)
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const wasActive = useRef(false)
 
   const jobActive = !!job && (job.status === 'queued' || job.status === 'running')
 
-  const load = useCallback(async () => {
-    if (!siteId) return
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/diagnostics/${siteId}`)
-      const json = await res.json()
-      setData(
-        res.ok
-          ? json
-          : { domain: '', healthScore: null, urlsChecked: 0, totalRendered: 0, urlsWithIssues: [], topErrors: [], message: json.error }
-      )
-    } catch {
-      setData({ domain: '', healthScore: null, urlsChecked: 0, totalRendered: 0, urlsWithIssues: [], topErrors: [], message: 'Failed to load diagnostics' })
-    } finally {
-      setLoading(false)
-    }
-  }, [siteId])
-
-  useEffect(() => {
-    if (siteId) load()
-  }, [siteId, load])
+  // Diagnostics summary via SWR — cached per site, instant on revisit. The job
+  // poll below refreshes it (reloadData) when a scan finishes.
+  const { data, isLoading: loading, mutate: reloadData } = useSWR<DiagSummary>(
+    siteId ? `/api/diagnostics/${siteId}` : null
+  )
 
   // Poll the scan-job status; self-reschedules while active, reloads on finish.
   const poll = useCallback(async () => {
@@ -278,14 +261,14 @@ export default function BotVisibilityPage() {
       if (wasActive.current && !active) {
         if (d.job?.status === 'failed') message.error(d.job.error_message ?? 'Scan failed')
         else message.success('Scan complete')
-        await load()
+        await reloadData()
       }
       wasActive.current = active
       if (active) pollTimer.current = setTimeout(poll, 2500)
     } catch {
       /* transient — resumes on next trigger */
     }
-  }, [siteId, load])
+  }, [siteId, reloadData])
 
   // On site change: reset and discover any in-progress job (resume polling).
   useEffect(() => {

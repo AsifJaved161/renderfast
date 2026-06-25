@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import {
   Card,
   Table,
@@ -57,31 +58,18 @@ interface TeamData {
 }
 
 export default function TeamPage() {
-  const [data, setData] = useState<TeamData | null>(null)
-  const [loading, setLoading] = useState(true)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('member')
   const [inviting, setInviting] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/team')
-      setData(res.ok ? await res.json() : null)
-    } catch {
-      setData(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // Team data via SWR (cached, instant on revisit). mutate() refreshes it after
+  // any change (invite / role / remove / accept).
+  const { data, isLoading: loading, mutate } = useSWR<TeamData>('/api/team')
 
   // Auto-accept an invite arriving from the email link (?invite=token).
   useEffect(() => {
     const token = new URLSearchParams(window.location.search).get('invite')
-    if (!token) {
-      load()
-      return
-    }
+    if (!token) return
     ;(async () => {
       try {
         const res = await fetch('/api/team/accept', {
@@ -95,10 +83,10 @@ export default function TeamPage() {
         /* ignore */
       } finally {
         window.history.replaceState({}, '', '/team')
-        load()
+        mutate()
       }
     })()
-  }, [load])
+  }, [mutate])
 
   async function invite() {
     if (!inviteEmail.trim()) {
@@ -115,7 +103,7 @@ export default function TeamPage() {
       if (res.ok) {
         message.success('Invitation sent')
         setInviteEmail('')
-        load()
+        mutate()
       } else {
         message.error((await res.json().catch(() => ({})))?.error ?? 'Invite failed')
       }
@@ -132,7 +120,7 @@ export default function TeamPage() {
     })
     if (res.ok) {
       message.success('Role updated')
-      load()
+      mutate()
     } else message.error('Update failed')
   }
 
@@ -140,7 +128,7 @@ export default function TeamPage() {
     const res = await fetch(`/api/team/${id}`, { method: 'DELETE' })
     if (res.ok) {
       message.success('Member removed')
-      load()
+      mutate()
     } else message.error('Remove failed')
   }
 
@@ -163,7 +151,7 @@ export default function TeamPage() {
     })
     if (res.ok) {
       message.success('Invitation accepted')
-      load()
+      mutate()
     } else message.error((await res.json().catch(() => ({})))?.error ?? 'Accept failed')
   }
 
