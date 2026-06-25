@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import {
   Row,
   Col,
@@ -27,7 +28,6 @@ import type { Dayjs } from 'dayjs'
 import { DonutChart, Legend, BarChart, MetricTilesChart } from '@/components/charts/Charts'
 import { StatTitle } from '@/components/ui/StatTitle'
 import { useDashboard } from '@/lib/dashboard-context'
-import { readCache, writeCache } from '@/lib/swr-cache'
 
 const BRAND = '#2da01d'
 const { Title } = Typography
@@ -68,41 +68,23 @@ const EMPTY: Analytics = {
 
 export default function CdnAnalyticsPage() {
   const { sites } = useDashboard() // shared from the layout — no extra /api/sites call
-  const [loading, setLoading] = useState(true)
-  const [data, setData] = useState<Analytics>(EMPTY)
   const [siteId, setSiteId] = useState<string | undefined>()
   const [botType, setBotType] = useState<string | undefined>()
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null)
 
-  const load = useCallback(async () => {
-    const params = new URLSearchParams()
-    if (siteId) params.set('site_id', siteId)
-    if (botType) params.set('bot_type', botType)
-    if (range) {
-      params.set('start_date', range[0].toISOString())
-      params.set('end_date', range[1].toISOString())
-    }
-    // Stale-while-revalidate: instant render from this session's cache, then refresh.
-    const cacheKey = `rf_cdn_${params.toString()}`
-    const cached = readCache<Analytics>(cacheKey)
-    if (cached) setData(cached)
-    setLoading(!cached)
-    try {
-      const res = await fetch(`/api/analytics?${params}`)
-      const json: Analytics = await res.json()
-      const next = json?.summary ? json : EMPTY
-      setData(next)
-      writeCache(cacheKey, next)
-    } catch {
-      if (!cached) setData(EMPTY)
-    } finally {
-      setLoading(false)
-    }
-  }, [siteId, botType, range])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  // Analytics via SWR — cached per site/bot/date-range key, so returning to a
+  // previously-seen view renders instantly and revalidates in the background.
+  const params = new URLSearchParams()
+  if (siteId) params.set('site_id', siteId)
+  if (botType) params.set('bot_type', botType)
+  if (range) {
+    params.set('start_date', range[0].toISOString())
+    params.set('end_date', range[1].toISOString())
+  }
+  const { data: raw, isLoading: loading } = useSWR<Analytics>(
+    `/api/analytics?${params.toString()}`
+  )
+  const data = raw?.summary ? raw : EMPTY
 
   const split = [
     { label: 'Search', value: data.botTypeSplit.search, color: BRAND },

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
@@ -31,7 +32,6 @@ import { DonutChart, Legend, BarChart, MetricTilesChart } from '@/components/cha
 import { StatTitle } from '@/components/ui/StatTitle'
 import { BotCostWidget } from '@/components/dashboard/BotCostWidget'
 import { useDashboard } from '@/lib/dashboard-context'
-import { readCache, writeCache } from '@/lib/swr-cache'
 
 const BRAND = '#2da01d'
 const { Title, Text } = Typography
@@ -79,8 +79,6 @@ const EMPTY: Analytics = {
 }
 
 export default function DashboardPage() {
-  const [loading, setLoading] = useState(true)
-  const [data, setData] = useState<Analytics | null>(null)
   const { sites, user } = useDashboard() // shared from the layout — no extra calls
   const [siteId, setSiteId] = useState<string | undefined>()
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null)
@@ -115,37 +113,20 @@ export default function DashboardPage() {
       .catch(() => {})
   }, [router])
 
-  const load = useCallback(async () => {
-    const params = new URLSearchParams()
-    if (siteId) params.set('site_id', siteId)
-    if (range) {
-      params.set('start_date', range[0].toISOString())
-      params.set('end_date', range[1].toISOString())
-    }
-    // Stale-while-revalidate: show cached data instantly (no skeleton) if we've
-    // seen this view before this session, then refresh in the background.
-    const cacheKey = `rf_dash_${params.toString()}`
-    const cached = readCache<Analytics>(cacheKey)
-    if (cached) setData(cached)
-    setLoading(!cached)
-    try {
-      const res = await fetch(`/api/analytics?${params}`)
-      const json: Analytics = await res.json()
-      const next = json?.summary ? json : EMPTY
-      setData(next)
-      writeCache(cacheKey, next)
-    } catch {
-      if (!cached) setData(EMPTY)
-    } finally {
-      setLoading(false)
-    }
-  }, [siteId, range])
+  // Analytics via SWR — cached per site/date-range key in a global store, so
+  // switching back to a previously-seen view renders instantly (no skeleton)
+  // and revalidates in the background. The key is just the request URL.
+  const params = new URLSearchParams()
+  if (siteId) params.set('site_id', siteId)
+  if (range) {
+    params.set('start_date', range[0].toISOString())
+    params.set('end_date', range[1].toISOString())
+  }
+  const { data: raw, isLoading: loading } = useSWR<Analytics>(
+    `/api/analytics?${params.toString()}`
+  )
 
-  useEffect(() => {
-    load()
-  }, [load])
-
-  const d = data ?? EMPTY
+  const d = raw?.summary ? raw : EMPTY
   const hasActivity = d.summary.totalRenders > 0 || d.summary.totalBotRequests > 0
   // The cost widget is per-site; fall back to the first site when "All sites".
   const costSiteId = siteId ?? sites[0]?.id

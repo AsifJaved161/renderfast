@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import {
   Card,
   Table,
@@ -20,7 +21,6 @@ import {
 import { DownloadOutlined, CodeOutlined } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import { useDashboard } from '@/lib/dashboard-context'
-import { readCache, writeCache } from '@/lib/swr-cache'
 
 const BRAND = '#2da01d'
 const { Title, Paragraph } = Typography
@@ -63,43 +63,29 @@ const botTypeColor: Record<string, string> = {
 
 export default function RenderHistoryPage() {
   const { sites } = useDashboard() // shared from the layout — no extra /api/sites call
-  const [loading, setLoading] = useState(true)
-  const [rows, setRows] = useState<HistoryRow[]>([])
   const [siteId, setSiteId] = useState<string | undefined>()
   const [botType, setBotType] = useState<string | undefined>()
   const [cache, setCache] = useState<'all' | 'hit' | 'miss'>('all')
   const [range, setRange] = useState<[Dayjs, Dayjs] | null>(null)
   const [previewHtml, setPreviewHtml] = useState<{ url: string; html: string } | null>(null)
 
-  const load = useCallback(async () => {
-    const params = new URLSearchParams({ type: 'history', limit: '200' })
-    if (siteId) params.set('site_id', siteId)
-    if (botType) params.set('bot_type', botType)
-    if (range) {
-      params.set('start_date', range[0].toISOString())
-      params.set('end_date', range[1].toISOString())
-    }
-    // Stale-while-revalidate: instant render from this session's cache, then refresh.
-    const cacheKey = `rf_history_${params.toString()}`
-    const cached = readCache<HistoryRow[]>(cacheKey)
-    if (cached) setRows(cached)
-    setLoading(!cached)
-    try {
-      const res = await fetch(`/api/analytics?${params}`)
-      const json = await res.json()
-      const next: HistoryRow[] = json.renderHistory ?? []
-      setRows(next)
-      writeCache(cacheKey, next)
-    } catch {
-      if (!cached) message.error('Failed to load history')
-    } finally {
-      setLoading(false)
-    }
-  }, [siteId, botType, range])
+  // History via SWR — cached per filter key, so revisiting renders instantly
+  // and revalidates in the background.
+  const params = new URLSearchParams({ type: 'history', limit: '200' })
+  if (siteId) params.set('site_id', siteId)
+  if (botType) params.set('bot_type', botType)
+  if (range) {
+    params.set('start_date', range[0].toISOString())
+    params.set('end_date', range[1].toISOString())
+  }
+  const { data, isLoading: loading, error } = useSWR<{ renderHistory?: HistoryRow[] }>(
+    `/api/analytics?${params.toString()}`
+  )
+  const rows: HistoryRow[] = data?.renderHistory ?? []
 
   useEffect(() => {
-    load()
-  }, [load])
+    if (error) message.error('Failed to load history')
+  }, [error])
 
   // Client-side cache filter.
   const filtered = rows.filter((r) => {

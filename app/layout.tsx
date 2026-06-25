@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { AntdRegistry } from '@ant-design/nextjs-registry'
 import AntdProvider from '@/components/layout/AntdProvider'
+import SWRProvider from '@/components/providers/SWRProvider'
 import './globals.css'
 
 // System font stack (uses Inter if installed locally, else native UI fonts).
@@ -22,9 +23,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body style={{ margin: 0, padding: 0, fontFamily: FONT_STACK }}>
-        <AntdRegistry>
-          <AntdProvider>{children}</AntdProvider>
-        </AntdRegistry>
+        <SWRProvider>
+          <AntdRegistry>
+            <AntdProvider>{children}</AntdProvider>
+          </AntdRegistry>
+        </SWRProvider>
       </body>
     </html>
   )
