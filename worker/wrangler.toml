@@ -22,6 +22,6 @@ id = "e326c107311e4343ae3a882b3e4d97d2"
 
 [vars]
 # Vercel render endpoint — used only on a cache MISS / markdown / fallback.
-RENDER_ORIGIN = "https://renderforai.com/api/proxy"
+RENDER_ORIGIN = "https://renderfast.vercel.app/api/proxy"
 # Analytics beacon — logs edge-served hits so the dashboard stays accurate.
-BEACON_URL = "https://renderforai.com/api/cache-hit"
+BEACON_URL = "https://renderfast.vercel.app/api/cache-hit"
