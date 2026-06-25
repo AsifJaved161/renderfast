@@ -58,7 +58,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ user: data.user })
+    const res = NextResponse.json({ user: data.user })
+    // A brand-new account must never inherit a team account-switch context left by
+    // a previous user on this browser — clear it so they start in their own account.
+    res.cookies.set('rf_account_id', '', { path: '/', maxAge: 0 })
+    return res
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     console.error('[AUTH_SIGNUP_POST]:', detail)

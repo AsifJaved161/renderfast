@@ -59,6 +59,10 @@ export async function POST(req: NextRequest) {
         path: '/',
         maxAge: 60 * 60 * 24 * 7,
       })
+      // A fresh sign-in always starts in the user's OWN account — clear any team
+      // account-switch context left by a previous user on this browser so the new
+      // user can never inherit the previous account's data.
+      res.cookies.set('rf_account_id', '', { path: '/', maxAge: 0 })
     }
     return res
   } catch (error) {

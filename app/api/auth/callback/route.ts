@@ -55,6 +55,11 @@ export async function GET(req: NextRequest) {
       path: '/',
       maxAge: 60 * 60 * 24 * 7,
     })
+    // A fresh sign-in always starts in the user's OWN account. Clear any team
+    // account-switch context left by a previous user on this browser so the new
+    // user can never inherit the previous account's data (the switcher lets them
+    // switch back in deliberately). This is the cross-account data-leak fix.
+    res.cookies.set('rf_account_id', '', { path: '/', maxAge: 0 })
     return res
   } catch (error) {
     console.error('[AUTH_CALLBACK_GET]:', error)

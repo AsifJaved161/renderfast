@@ -81,6 +81,9 @@ export async function middleware(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser()
 
+    // Tracked outside the block below so it can be applied to apiRes after.
+    let clearAccountCookie = false
+
     if (user) {
       const selfId = user.id
       // Effective account: by default the user's own account. If they've switched
@@ -103,8 +106,12 @@ export async function middleware(request: NextRequest) {
         if (m) {
           effectiveId = accountId
           role = m.role as 'admin' | 'member' | 'viewer'
+        } else {
+          // Stale/invalid cookie (e.g. left by a previous user on this browser,
+          // or revoked membership): stay in own account AND drop the cookie so it
+          // can never resolve to another account's data on a later request.
+          clearAccountCookie = true
         }
-        // stale/invalid cookie → silently stay in own account
       }
 
       requestHeaders.set('x-user-id', effectiveId)
@@ -129,6 +136,9 @@ export async function middleware(request: NextRequest) {
         path: '/',
         maxAge: 60 * 60 * 24 * 7,
       })
+      if (clearAccountCookie) {
+        apiRes.cookies.set('rf_account_id', '', { path: '/', maxAge: 0 })
+      }
     }
     return apiRes
   }
