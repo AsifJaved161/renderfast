@@ -15,14 +15,14 @@ export default function Error({
   }, [error])
 
   return (
-    <ConfigProvider theme={{ algorithm: theme.darkAlgorithm, token: { colorPrimary: '#2da01d' } }}>
+    <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm, token: { colorPrimary: '#2da01d' } }}>
       <div
         style={{
           minHeight: '100vh',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: '#0f0f0f',
+          background: '#f9fafb',
           padding: 24,
         }}
       >
