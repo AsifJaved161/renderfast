@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import {
   Row,
   Col,
@@ -35,31 +36,22 @@ interface BrokenLink {
 }
 
 export default function BrokenLinkCheckerPage() {
-  const [loading, setLoading] = useState(true)
   const { sites } = useDashboard() // shared from the layout — no extra /api/sites call
   const [scanning, setScanning] = useState(false)
-  const [rows, setRows] = useState<BrokenLink[]>([])
   const [siteId, setSiteId] = useState<string | undefined>()
   const [tab, setTab] = useState<'all' | 'open' | 'resolved'>('all')
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams()
-      if (siteId) params.set('site_id', siteId)
-      const res = await fetch(`/api/broken-links?${params}`)
-      const json = await res.json()
-      setRows(json.data ?? [])
-    } catch {
-      message.error('Failed to load broken links')
-    } finally {
-      setLoading(false)
-    }
-  }, [siteId])
+  // Broken links via SWR — cached per site filter, instant on revisit.
+  const params = new URLSearchParams()
+  if (siteId) params.set('site_id', siteId)
+  const { data, isLoading: loading, error, mutate } = useSWR<{ data: BrokenLink[] }>(
+    `/api/broken-links?${params}`
+  )
+  const rows = data?.data ?? []
 
   useEffect(() => {
-    load()
-  }, [load])
+    if (error) message.error('Failed to load broken links')
+  }, [error])
 
   async function runScan() {
     if (!siteId) {
@@ -83,7 +75,7 @@ export default function BrokenLinkCheckerPage() {
       } else {
         message.success(`Scanned ${data.scanned} URLs — ${data.broken} broken (${data.newlyFound ?? 0} new)`)
       }
-      await load()
+      await mutate()
     } finally {
       setScanning(false)
     }
@@ -93,7 +85,7 @@ export default function BrokenLinkCheckerPage() {
     const res = await fetch(`/api/broken-links?id=${id}`, { method: 'PATCH' })
     if (res.ok) {
       message.success('Marked resolved')
-      await load()
+      await mutate()
     } else {
       message.error('Update failed')
     }

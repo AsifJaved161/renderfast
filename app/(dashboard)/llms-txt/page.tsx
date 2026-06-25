@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import useSWR from 'swr'
 import {
   Card,
   Button,
@@ -43,32 +44,26 @@ export default function LlmsTxtPage() {
   const { selectedSiteId } = useDashboard()
   const siteId = selectedSiteId ?? undefined
 
-  const [data, setData] = useState<LlmsData | null>(null)
-  const [loading, setLoading] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
   const [savingManual, setSavingManual] = useState(false)
   const [editValue, setEditValue] = useState('')
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
 
-  const load = useCallback(async () => {
-    if (!siteId) return
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/llms-txt/${siteId}`)
-      const d: LlmsData = await res.json()
-      setData(res.ok ? d : null)
-      if (res.ok) setEditValue(d.content)
-    } catch {
-      setData(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [siteId])
+  // llms.txt for the selected site via SWR (cached per site, instant on revisit).
+  const { data, isLoading: loading, mutate } = useSWR<LlmsData>(
+    siteId ? `/api/llms-txt/${siteId}` : null
+  )
 
+  // Seed the editor from the loaded content once per site (so switching sites
+  // refreshes it, but a background revalidation won't clobber in-progress edits).
+  const hydratedSite = useRef<string | undefined>(undefined)
   useEffect(() => {
-    load()
-  }, [load])
+    if (siteId && data && hydratedSite.current !== siteId) {
+      hydratedSite.current = siteId
+      setEditValue(data.content)
+    }
+  }, [siteId, data])
 
   async function regenerate() {
     if (!siteId) return
@@ -80,7 +75,7 @@ export default function LlmsTxtPage() {
         return
       }
       const d = await res.json()
-      setData((prev) => ({ ...(prev as LlmsData), ...d, autoEnabled: true }))
+      await mutate({ ...(data as LlmsData), ...d, autoEnabled: true }, { revalidate: false })
       setEditValue(d.content)
       message.success('llms.txt regenerated')
     } finally {
@@ -107,7 +102,7 @@ export default function LlmsTxtPage() {
         return
       }
       const d = await res.json()
-      setData((prev) => ({ ...(prev as LlmsData), ...d }))
+      await mutate({ ...(data as LlmsData), ...d }, { revalidate: false })
       message.success('Manual version saved — automatic updates are now paused')
     } finally {
       setSavingManual(false)

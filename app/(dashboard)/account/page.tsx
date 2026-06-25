@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import useSWR from 'swr'
 import {
   Form,
   Input,
@@ -30,42 +31,40 @@ export default function AccountPage() {
   const [companyForm] = Form.useForm()
   const [userForm] = Form.useForm()
 
-  const [loading, setLoading] = useState(true)
-  const [email, setEmail] = useState('')
   const [savingCompany, setSavingCompany] = useState(false)
   const [savingUser, setSavingUser] = useState(false)
   const [sendingReset, setSendingReset] = useState(false)
 
-  // Load the current profile and hydrate both forms.
+  // Profile via SWR — cached, so revisiting the page hydrates the forms instantly.
+  const { data, isLoading: loading, error } = useSWR<{ user: Profile }>('/api/auth/me')
+  const profile = data?.user
+  const email = profile?.email ?? ''
+
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
-      .then((d) => {
-        const p: Profile = d.user ?? {}
-        setEmail(p.email ?? '')
+    if (error) message.error('Could not load your account')
+  }, [error])
 
-        const [first = '', ...rest] = (p.full_name ?? '').trim().split(/\s+/)
-        let phone = ''
-        try {
-          phone = localStorage.getItem(PHONE_KEY) ?? ''
-        } catch {
-          /* ignore */
-        }
-
-        companyForm.setFieldsValue({
-          adminEmail: p.email ?? '',
-          companyName: p.company_name ?? '',
-        })
-        userForm.setFieldsValue({
-          firstName: first,
-          lastName: rest.join(' '),
-          email: p.email ?? '',
-          phone,
-        })
-      })
-      .catch(() => message.error('Could not load your account'))
-      .finally(() => setLoading(false))
-  }, [companyForm, userForm])
+  // Hydrate both forms once the profile arrives (and again if it revalidates).
+  useEffect(() => {
+    if (!profile) return
+    const [first = '', ...rest] = (profile.full_name ?? '').trim().split(/\s+/)
+    let phone = ''
+    try {
+      phone = localStorage.getItem(PHONE_KEY) ?? ''
+    } catch {
+      /* ignore */
+    }
+    companyForm.setFieldsValue({
+      adminEmail: profile.email ?? '',
+      companyName: profile.company_name ?? '',
+    })
+    userForm.setFieldsValue({
+      firstName: first,
+      lastName: rest.join(' '),
+      email: profile.email ?? '',
+      phone,
+    })
+  }, [profile, companyForm, userForm])
 
   async function patchProfile(updates: Record<string, unknown>): Promise<boolean> {
     const res = await fetch('/api/user', {

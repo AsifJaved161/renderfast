@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import useSWR from 'swr'
 import {
   Row,
   Col,
@@ -59,25 +60,12 @@ export default function BotCostPage() {
   const siteId = selectedSiteId ?? undefined
 
   const [range, setRange] = useState<RangeKey>('30d')
-  const [data, setData] = useState<Summary | null>(null)
-  const [loading, setLoading] = useState(false)
 
-  const load = useCallback(async () => {
-    if (!siteId) return
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/bot-cost/${siteId}?range=${range}`)
-      setData(res.ok ? await res.json() : null)
-    } catch {
-      setData(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [siteId, range])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  // Per-site cost summary via SWR — cached per site+range key, so flipping
+  // between ranges you've already viewed is instant. Null key = no site yet.
+  const { data, isLoading: loading } = useSWR<Summary>(
+    siteId ? `/api/bot-cost/${siteId}?range=${range}` : null
+  )
 
   // Disclaimer rate: the single current rate, or a min–max span if it changed
   // mid-range — so the copy is accurate even across a rate change.

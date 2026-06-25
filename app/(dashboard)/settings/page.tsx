@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import useSWR from 'swr'
 import {
   Card,
   Slider,
@@ -69,15 +70,15 @@ export default function SettingsPage() {
   const [s, setS] = useState<SettingsState>(DEFAULTS)
   const [saving, setSaving] = useState(false)
 
-  // Hydrate notification preference from the user profile.
+  // Hydrate the notification preference from the cached profile. Guarded so a
+  // background revalidation never clobbers toggles the user is mid-editing.
+  const { data } = useSWR<{ user?: { notification_email?: boolean } }>('/api/auth/me')
+  const hydrated = useRef(false)
   useEffect(() => {
-    fetch('/api/auth/me')
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.user) setS((prev) => ({ ...prev, notifyLimit: !!d.user.notification_email }))
-      })
-      .catch(() => {})
-  }, [])
+    if (hydrated.current || !data?.user) return
+    hydrated.current = true
+    setS((prev) => ({ ...prev, notifyLimit: !!data.user!.notification_email }))
+  }, [data])
 
   function set<K extends keyof SettingsState>(key: K, value: SettingsState[K]) {
     setS((prev) => ({ ...prev, [key]: value }))

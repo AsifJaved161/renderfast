@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import useSWR from 'swr'
 import Link from 'next/link'
 import { Row, Col, Card, Alert, Empty, Typography, Skeleton, Statistic, Table } from 'antd'
 import { GoogleOutlined, RiseOutlined, EyeOutlined, AimOutlined, PercentageOutlined } from '@ant-design/icons'
@@ -26,33 +26,15 @@ export default function InsightPage() {
   const { selectedSiteId } = useDashboard()
   const siteId = selectedSiteId ?? undefined
 
-  const [connected, setConnected] = useState<boolean | null>(null)
-  const [metrics, setMetrics] = useState<Metrics | null>(null)
-  const [loading, setLoading] = useState(false)
+  // Connection status (cached, instant on revisit). null = still resolving.
+  const { data: gsc } = useSWR<{ connected: boolean }>('/api/gsc')
+  const connected = gsc ? !!gsc.connected : null
 
-  useEffect(() => {
-    fetch('/api/gsc')
-      .then((r) => r.json())
-      .then((d) => setConnected(!!d.connected))
-      .catch(() => setConnected(false))
-  }, [])
-
-  const loadMetrics = useCallback(async () => {
-    if (!siteId || !connected) return
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/gsc/metrics?site_id=${siteId}`)
-      setMetrics(await res.json())
-    } catch {
-      setMetrics(null)
-    } finally {
-      setLoading(false)
-    }
-  }, [siteId, connected])
-
-  useEffect(() => {
-    loadMetrics()
-  }, [loadMetrics])
+  // Metrics only once we know GSC is connected AND a site is selected. A null
+  // key tells SWR not to fetch, so switching sites just swaps the cached key.
+  const { data: metrics, isLoading: loading } = useSWR<Metrics>(
+    siteId && connected ? `/api/gsc/metrics?site_id=${siteId}` : null
+  )
 
   const totals = metrics?.totals
 

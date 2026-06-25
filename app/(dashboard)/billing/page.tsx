@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import {
   Row,
   Col,
@@ -48,29 +49,19 @@ const INVOICES = [
 ]
 
 export default function BillingPage() {
-  const [loading, setLoading] = useState(true)
-  const [plan, setPlan] = useState<PlanKey>('free')
-  const [usage, setUsage] = useState({ renderCount: 0, renderLimit: 1000, percentUsed: 0, resetAt: '' })
-  const [trend, setTrend] = useState<{ date: string; renders: number }[]>([])
   const [busy, setBusy] = useState<string | null>(null)
 
-  useEffect(() => {
-    ;(async () => {
-      try {
-        const [me, analytics] = await Promise.all([
-          fetch('/api/auth/me').then((r) => r.json()),
-          fetch('/api/analytics').then((r) => r.json()),
-        ])
-        if (me.user?.plan) setPlan(me.user.plan)
-        if (analytics.usageStats) setUsage(analytics.usageStats)
-        if (analytics.renderTrend) setTrend(analytics.renderTrend)
-      } catch {
-        // keep defaults
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [])
+  // Plan + usage via SWR (both cached, instant on revisit).
+  const { data: me, isLoading: loadingMe } = useSWR<{ user?: { plan?: PlanKey } }>('/api/auth/me')
+  const { data: analytics, isLoading: loadingAnalytics } = useSWR<{
+    usageStats?: { renderCount: number; renderLimit: number; percentUsed: number; resetAt: string }
+    renderTrend?: { date: string; renders: number }[]
+  }>('/api/analytics')
+
+  const loading = loadingMe || loadingAnalytics
+  const plan: PlanKey = me?.user?.plan ?? 'free'
+  const usage = analytics?.usageStats ?? { renderCount: 0, renderLimit: 1000, percentUsed: 0, resetAt: '' }
+  const trend = analytics?.renderTrend ?? []
 
   async function manageSubscription() {
     setBusy('portal')

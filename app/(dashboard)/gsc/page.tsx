@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useEffect } from 'react'
+import useSWR from 'swr'
 import {
   Row,
   Col,
@@ -53,9 +54,24 @@ export default function GscPage() {
   const { sites, selectedSiteId } = useDashboard()
   const siteId = selectedSiteId ?? undefined
 
-  const [status, setStatus] = useState<{ connected: boolean; configured: boolean; email: string | null } | null>(null)
-  const [metrics, setMetrics] = useState<Metrics | null>(null)
-  const [loadingMetrics, setLoadingMetrics] = useState(false)
+  // Connection status (cached, instant on revisit). Normalised to apply the same
+  // defaults the old code did so `configured` is never falsy-by-accident.
+  const { data: statusRaw, mutate: mutateStatus } = useSWR<{
+    connected?: boolean
+    configured?: boolean
+    email?: string | null
+  }>('/api/gsc')
+  const status = statusRaw
+    ? { connected: !!statusRaw.connected, configured: statusRaw.configured !== false, email: statusRaw.email ?? null }
+    : null
+
+  // Metrics only once connected AND a site is selected; null key = no fetch.
+  const {
+    data: metrics,
+    isLoading: loadingMetrics,
+    isValidating: refreshing,
+    mutate: refreshMetrics,
+  } = useSWR<Metrics>(siteId && status?.connected ? `/api/gsc/metrics?site_id=${siteId}` : null)
 
   // Surface ?connected / ?error from the OAuth redirect, then clean the URL.
   useEffect(() => {
@@ -68,38 +84,6 @@ export default function GscPage() {
     }
   }, [])
 
-  const loadStatus = useCallback(async () => {
-    try {
-      const res = await fetch('/api/gsc')
-      const d = await res.json()
-      setStatus({ connected: !!d.connected, configured: d.configured !== false, email: d.email ?? null })
-    } catch {
-      setStatus({ connected: false, configured: true, email: null })
-    }
-  }, [])
-
-  useEffect(() => {
-    loadStatus()
-  }, [loadStatus])
-
-  const loadMetrics = useCallback(async () => {
-    if (!siteId || !status?.connected) return
-    setLoadingMetrics(true)
-    try {
-      const res = await fetch(`/api/gsc/metrics?site_id=${siteId}`)
-      const d = await res.json()
-      setMetrics(d)
-    } catch {
-      setMetrics(null)
-    } finally {
-      setLoadingMetrics(false)
-    }
-  }, [siteId, status?.connected])
-
-  useEffect(() => {
-    loadMetrics()
-  }, [loadMetrics])
-
   function connect() {
     // Full-page navigation so the session cookie reaches /api/gsc/connect.
     window.location.href = '/api/gsc/connect'
@@ -107,9 +91,8 @@ export default function GscPage() {
 
   async function disconnect() {
     await fetch('/api/gsc', { method: 'DELETE' })
-    setMetrics(null)
     message.success('Disconnected.')
-    loadStatus()
+    mutateStatus() // re-read status → connected:false hides the metrics view
   }
 
   // ── Not connected ────────────────────────────────────────────────────────────
@@ -175,7 +158,7 @@ export default function GscPage() {
               {status.email}
             </Tag>
           )}
-          <Button icon={<ReloadOutlined />} onClick={loadMetrics} loading={loadingMetrics}>
+          <Button icon={<ReloadOutlined />} onClick={() => refreshMetrics()} loading={refreshing}>
             Refresh
           </Button>
           <Popconfirm title="Disconnect Google Search Console?" onConfirm={disconnect} okText="Disconnect">
