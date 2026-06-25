@@ -9,7 +9,8 @@ export function getSupabaseBrowser() {
   if (!client) {
     client = createClient(
       (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim(),
-      (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim()
+      (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim(),
+      { auth: { flowType: 'pkce' } }
     )
   }
   return client
