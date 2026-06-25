@@ -52,7 +52,12 @@ export default function LoginPage() {
     const supabase = getSupabaseBrowser()
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/api/auth/callback` },
+      options: {
+        redirectTo: `${window.location.origin}/api/auth/callback`,
+        // Always show the Google account picker instead of silently reusing the
+        // browser's existing Google session.
+        queryParams: { prompt: 'select_account' },
+      },
     })
   }
 
