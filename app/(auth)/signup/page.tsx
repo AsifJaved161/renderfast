@@ -13,6 +13,7 @@ import {
   GoogleOutlined,
 } from '@ant-design/icons'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
+import { useClearUserCache } from '@/lib/client-session'
 
 const BRAND = '#2da01d'
 
@@ -34,6 +35,7 @@ function passwordStrength(pw: string): { percent: number; label: string; color: 
 
 export default function SignupPage() {
   const router = useRouter()
+  const clearUserCache = useClearUserCache()
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -59,6 +61,8 @@ export default function SignupPage() {
         setError(data.error ?? 'Signup failed')
         return
       }
+      // Start the new account with a clean cache.
+      clearUserCache()
       router.push('/dashboard')
       router.refresh()
     } catch {
@@ -70,6 +74,8 @@ export default function SignupPage() {
 
   async function signUpWithGoogle() {
     setGoogleLoading(true)
+    // Clear any prior account's cache before redirecting to Google.
+    clearUserCache()
     const supabase = getSupabaseBrowser()
     await supabase.auth.signInWithOAuth({
       provider: 'google',

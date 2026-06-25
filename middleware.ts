@@ -117,7 +117,20 @@ export async function middleware(request: NextRequest) {
         return finalize(NextResponse.json({ error: 'Read-only access for this account' }, { status: 403 }))
       }
     }
-    return finalize(NextResponse.next({ request: { headers: requestHeaders } }))
+    const apiRes = finalize(NextResponse.next({ request: { headers: requestHeaders } }))
+    // Keep the JS-readable cache-scoping cookie in sync with the VERIFIED session
+    // user, so the client always scopes its persisted cache to the right account
+    // (covers sessions that predate this cookie). Cleared on logout.
+    if (user) {
+      apiRes.cookies.set('rf_uid', user.id, {
+        httpOnly: false,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+        maxAge: 60 * 60 * 24 * 7,
+      })
+    }
+    return apiRes
   }
 
   // ── Page routes: gate with getSession() ──────────────────────────────────────

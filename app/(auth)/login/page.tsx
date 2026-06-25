@@ -15,11 +15,13 @@ import {
   GoogleOutlined,
 } from '@ant-design/icons'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
+import { useClearUserCache } from '@/lib/client-session'
 
 const BRAND = '#2da01d'
 
 export default function LoginPage() {
   const router = useRouter()
+  const clearUserCache = useClearUserCache()
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -38,6 +40,8 @@ export default function LoginPage() {
         setError(data.error ?? 'Login failed')
         return
       }
+      // Drop any cache left by a previous account before entering the app.
+      clearUserCache()
       router.push('/dashboard')
       router.refresh()
     } catch {
@@ -49,6 +53,8 @@ export default function LoginPage() {
 
   async function signInWithGoogle() {
     setGoogleLoading(true)
+    // Clear any prior account's cache before redirecting to Google.
+    clearUserCache()
     const supabase = getSupabaseBrowser()
     await supabase.auth.signInWithOAuth({
       provider: 'google',

@@ -1,6 +1,7 @@
 'use client'
 
 import { SWRConfig } from 'swr'
+import { SWR_CACHE_KEY, currentUid } from '@/lib/client-session'
 
 // Global data-fetching layer (SWR).
 //
@@ -10,8 +11,12 @@ import { SWRConfig } from 'swr'
 //   • the same key requested in two places makes a single request (dedup),
 //   • data refreshes in the background (stale-while-revalidate).
 // The cache is also persisted to sessionStorage, so even a hard refresh (F5)
-// paints from cache immediately, then revalidates. sessionStorage (not local)
-// means it's scoped to the tab/session and never goes stale across sessions.
+// paints from cache immediately, then revalidates.
+//
+// SECURITY: the persisted cache is STAMPED with the signed-in user's id (the
+// `rf_uid` cookie) and only reused when that id matches the user signed in right
+// now. A different (or absent) uid → start empty, so one account can never paint
+// another account's cached responses after a login/logout in the same browser.
 
 // Default fetcher: any useSWR(url) does GET url → json, throwing on non-2xx so
 // SWR surfaces the error instead of caching a bad body.
@@ -21,22 +26,30 @@ const fetcher = async (url: string) => {
   return res.json()
 }
 
-const CACHE_KEY = 'rf-swr-cache'
-
 // Persistent cache provider. Hydrates the SWR Map from sessionStorage on load
-// and flushes it back on unload. Guarded for SSR (no window) and private mode.
+// ONLY when the stored cache belongs to the current user, and flushes it back
+// (stamped with the current uid) on unload. Guarded for SSR / private mode.
 function cacheProvider() {
   if (typeof window === 'undefined') return new Map()
-  let entries: [string, unknown][] = []
+  const uid = currentUid()
+  let map = new Map<string, unknown>()
   try {
-    entries = JSON.parse(sessionStorage.getItem(CACHE_KEY) || '[]')
+    const raw = JSON.parse(sessionStorage.getItem(SWR_CACHE_KEY) || 'null')
+    if (uid && raw && raw.uid === uid && Array.isArray(raw.entries)) {
+      map = new Map<string, unknown>(raw.entries)
+    } else {
+      // No user, or cache belongs to someone else → never reuse it.
+      sessionStorage.removeItem(SWR_CACHE_KEY)
+    }
   } catch {
-    entries = []
+    map = new Map()
   }
-  const map = new Map<string, unknown>(entries)
   window.addEventListener('beforeunload', () => {
     try {
-      sessionStorage.setItem(CACHE_KEY, JSON.stringify(Array.from(map.entries())))
+      sessionStorage.setItem(
+        SWR_CACHE_KEY,
+        JSON.stringify({ uid: currentUid(), entries: Array.from(map.entries()) })
+      )
     } catch {
       /* ignore quota / private-mode failures */
     }

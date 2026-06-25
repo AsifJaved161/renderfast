@@ -45,7 +45,17 @@ export async function GET(req: NextRequest) {
         .eq('id', data.user.id)
     }
 
-    return NextResponse.redirect(`${origin}/dashboard`)
+    const res = NextResponse.redirect(`${origin}/dashboard`)
+    // Publish the signed-in user id as a JS-readable cookie so the client can
+    // scope its persisted cache to this account (see lib/client-session.ts).
+    res.cookies.set('rf_uid', data.user.id, {
+      httpOnly: false,
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      path: '/',
+      maxAge: 60 * 60 * 24 * 7,
+    })
+    return res
   } catch (error) {
     console.error('[AUTH_CALLBACK_GET]:', error)
     // Redirect rather than JSON — this endpoint runs in a browser navigation.

@@ -48,7 +48,19 @@ export async function POST(req: NextRequest) {
     }
 
     // Session cookies are set automatically by the @supabase/ssr client.
-    return NextResponse.json({ user: data.user, session: data.session })
+    const res = NextResponse.json({ user: data.user, session: data.session })
+    // Publish the signed-in user id as a JS-readable cookie so the client can
+    // scope its persisted cache to this account (see lib/client-session.ts).
+    if (data.user) {
+      res.cookies.set('rf_uid', data.user.id, {
+        httpOnly: false,
+        sameSite: 'lax',
+        secure: process.env.NODE_ENV === 'production',
+        path: '/',
+        maxAge: 60 * 60 * 24 * 7,
+      })
+    }
+    return res
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error)
     console.error('[AUTH_LOGIN_POST]:', detail)

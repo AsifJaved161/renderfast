@@ -12,7 +12,10 @@ export async function POST() {
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
-    return NextResponse.json({ success: true })
+    const res = NextResponse.json({ success: true })
+    // Drop the cache-scoping cookie so no stale uid lingers after sign-out.
+    res.cookies.set('rf_uid', '', { path: '/', maxAge: 0 })
+    return res
   } catch (error) {
     console.error('[AUTH_LOGOUT_POST]:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

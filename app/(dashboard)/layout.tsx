@@ -43,6 +43,7 @@ import {
   MenuUnfoldOutlined,
 } from '@ant-design/icons'
 import { DashboardContext } from '@/lib/dashboard-context'
+import { useClearUserCache } from '@/lib/client-session'
 import { AccountSwitcher } from '@/components/dashboard/AccountSwitcher'
 import { PLAN_LIMITS } from '@/lib/constants'
 import type { DbUser, DbSite, Plan } from '@/lib/supabase'
@@ -176,6 +177,7 @@ function initials(user: DbUser | null): string {
 export default function DashboardRootLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname() || '/dashboard'
+  const clearUserCache = useClearUserCache()
 
   const [collapsed, setCollapsed] = useState(false)
   const [mode, setMode] = useState<ThemeMode>('light')
@@ -268,9 +270,11 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
     try {
       await fetch('/api/auth/logout', { method: 'POST' })
     } finally {
+      // Wipe this user's cached data so the next sign-in starts clean.
+      clearUserCache()
       router.push('/login')
     }
-  }, [router])
+  }, [router, clearUserCache])
 
   // ── Menu items (grouped) ────────────────────────────────────────────────────
   const menuItems: MenuProps['items'] = useMemo(

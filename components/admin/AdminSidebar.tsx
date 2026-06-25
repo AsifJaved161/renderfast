@@ -16,6 +16,7 @@ import {
   DollarOutlined,
   CloudServerOutlined,
 } from '@ant-design/icons'
+import { useClearUserCache } from '@/lib/client-session'
 
 const BRAND = '#2da01d'
 
@@ -34,11 +35,13 @@ const NAV = [
 export default function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
+  const clearUserCache = useClearUserCache()
 
   const selected = NAV.find((n) => pathname.startsWith(n.key))?.key ?? '/admin/dashboard'
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' })
+    clearUserCache()
     router.push('/admin/login')
     router.refresh()
   }
