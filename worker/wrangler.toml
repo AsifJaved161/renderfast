@@ -12,12 +12,13 @@
 name = "renderforai-edge"
 main = "edge.ts"
 compatibility_date = "2024-09-23"
+workers_dev = true
 
 # NATIVE KV binding → same namespace lib/kv.ts reads/writes via REST. This is
 # what makes edge reads ~5–30 ms instead of a REST round-trip.
 [[kv_namespaces]]
 binding = "CACHE"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "e326c107311e4343ae3a882b3e4d97d2"
 
 [vars]
 # Vercel render endpoint — used only on a cache MISS / markdown / fallback.
