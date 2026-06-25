@@ -1,0 +1,26 @@
+# RenderForAI edge cache Worker — deploy on RenderForAI's OWN Cloudflare account
+# (the one that owns the KV namespace the render pipeline writes to).
+#
+#   cd worker
+#   wrangler kv namespace list          # find the id of your existing pages namespace
+#   # paste that id below as `id`
+#   wrangler deploy
+#
+# After deploy, point the customer integration Worker (worker/index.ts →
+# PRERENDER_ORIGIN) at this Worker's URL instead of the Vercel endpoint.
+
+name = "renderforai-edge"
+main = "edge.ts"
+compatibility_date = "2024-09-23"
+
+# NATIVE KV binding → same namespace lib/kv.ts reads/writes via REST. This is
+# what makes edge reads ~5–30 ms instead of a REST round-trip.
+[[kv_namespaces]]
+binding = "CACHE"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+[vars]
+# Vercel render endpoint — used only on a cache MISS / markdown / fallback.
+RENDER_ORIGIN = "https://renderforai.com/api/proxy"
+# Analytics beacon — logs edge-served hits so the dashboard stays accurate.
+BEACON_URL = "https://renderforai.com/api/cache-hit"

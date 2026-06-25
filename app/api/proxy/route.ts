@@ -28,9 +28,27 @@ interface Owner {
   renderLimit: number
 }
 
+// Short-lived in-memory cache for owner lookups. The proxy hot path resolves the
+// same domain over and over; without this, every cache HIT pays 2 sequential
+// Supabase round-trips before it can serve the bot. Sites/limits change rarely,
+// so a few seconds of staleness is fine — and cache HITS never spend a render,
+// so a slightly stale count can't cause over-rendering. Mirrors getCloudflareConfig().
+const OWNER_TTL_MS = 15_000
+const ownerCache = new Map<string, { owner: Owner | null; at: number }>()
+
+async function resolveOwner(domain: string, token: string | null): Promise<Owner | null> {
+  const key = `${domain}|${token ?? ''}`
+  const hit = ownerCache.get(key)
+  if (hit && Date.now() - hit.at < OWNER_TTL_MS) return hit.owner
+  const owner = await resolveOwnerFromDb(domain, token)
+  if (ownerCache.size > 5000) ownerCache.clear() // crude bound; rebuilds in seconds
+  ownerCache.set(key, { owner, at: Date.now() })
+  return owner
+}
+
 // Resolve the registered site (and its owner) for a target domain. The optional
 // token (api_key) is used to disambiguate if the same domain exists for >1 user.
-async function resolveOwner(domain: string, token: string | null): Promise<Owner | null> {
+async function resolveOwnerFromDb(domain: string, token: string | null): Promise<Owner | null> {
   // Match the host with or without a leading "www." so example.com and
   // www.example.com resolve to the same registered site.
   const bare = domain.replace(/^www\./, '')

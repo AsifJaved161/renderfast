@@ -10,7 +10,10 @@
  *   3. wrangler deploy  (route: example.com/*)
  */
 
-const PRERENDER_ORIGIN = 'https://renderforai.com/api/proxy'
+// Point at the RenderForAI EDGE worker — it serves cache hits from KV at the
+// edge (~5–30 ms) and only falls back to the Vercel render endpoint on a miss.
+// (Plain Vercel still works too: https://renderforai.com/api/proxy)
+const PRERENDER_ORIGIN = 'https://edge.renderforai.com'
 const PRERENDER_TOKEN = 'YOUR_API_KEY' // ← your RenderForAI API key
 
 // Search engines + AI crawlers + social unfurlers.
