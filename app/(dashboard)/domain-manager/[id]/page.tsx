@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -63,41 +64,33 @@ const INTEGRATION_LABEL: Record<string, string> = {
 export default function SiteDetailPage() {
   const router = useRouter()
   const { id } = useParams<{ id: string }>()
-  const [loading, setLoading] = useState(true)
-  const [notFound, setNotFound] = useState(false)
-  const [site, setSite] = useState<Site | null>(null)
-  const [renders30, setRenders30] = useState(0)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [form] = Form.useForm()
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetch(`/api/sites/${id}`)
-      if (res.status === 404) {
-        setNotFound(true)
-        return
-      }
-      const json = await res.json()
-      const s: Site = json.site
-      setSite(s)
-      setRenders30(json.stats?.rendersLast30Days ?? 0)
-      form.setFieldsValue({
-        name: s.name ?? '',
-        status: s.status,
-        integration_type: s.integration_type ?? undefined,
-      })
-    } catch {
-      message.error('Could not load this site')
-    } finally {
-      setLoading(false)
-    }
-  }, [id, form])
+  // Site details via SWR (cached per id). The global fetcher throws on non-2xx,
+  // so a 404 surfaces as an error whose message carries the status code.
+  const { data, error, isLoading: loading, mutate } = useSWR<{
+    site: Site
+    stats?: { rendersLast30Days?: number }
+  }>(id ? `/api/sites/${id}` : null)
+  const site = data?.site ?? null
+  const renders30 = data?.stats?.rendersLast30Days ?? 0
+  const notFound = !!error && /(^|\D)404(\D|$)/.test(error.message)
 
   useEffect(() => {
-    load()
-  }, [load])
+    if (error && !notFound) message.error('Could not load this site')
+  }, [error, notFound])
+
+  // Hydrate the settings form once the site loads (and on id change).
+  useEffect(() => {
+    if (!site) return
+    form.setFieldsValue({
+      name: site.name ?? '',
+      status: site.status,
+      integration_type: site.integration_type ?? undefined,
+    })
+  }, [site, form])
 
   async function save(values: {
     name: string
@@ -117,7 +110,7 @@ export default function SiteDetailPage() {
       })
       if (res.ok) {
         message.success('Saved')
-        await load()
+        await mutate()
       } else {
         message.error('Save failed')
       }

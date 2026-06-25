@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import {
   Row,
   Col,
@@ -50,43 +51,38 @@ function statusColor(code: number | null) {
 }
 
 export default function CachePage() {
-  const [loading, setLoading] = useState(true)
   const { sites } = useDashboard() // shared from the layout — no extra /api/sites call
-  const [rows, setRows] = useState<CacheEntry[]>([])
-  const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [siteId, setSiteId] = useState<string | undefined>()
   const [selected, setSelected] = useState<React.Key[]>([])
   const [busy, setBusy] = useState(false)
   const [viewHtml, setViewHtml] = useState<{ url: string; html: string } | null>(null)
-  const [summary, setSummary] = useState({ total: 0, totalSizeBytes: 0, avgTtlHours: 0, hitRate: 0 })
   const LIMIT = 20
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) })
-      if (siteId) params.set('site_id', siteId)
-      const sumParams = new URLSearchParams({ summary: 'true' })
-      if (siteId) sumParams.set('site_id', siteId)
+  // Cache list (paginated) + aggregate summary via SWR — cached per site/page.
+  const listParams = new URLSearchParams({ page: String(page), limit: String(LIMIT) })
+  if (siteId) listParams.set('site_id', siteId)
+  const sumParams = new URLSearchParams({ summary: 'true' })
+  if (siteId) sumParams.set('site_id', siteId)
 
-      const [list, sum] = await Promise.all([
-        fetch(`/api/cache?${params}`).then((r) => r.json()),
-        fetch(`/api/cache?${sumParams}`).then((r) => r.json()),
-      ])
-      setRows(list.data ?? [])
-      setTotal(list.total ?? 0)
-      if (sum.summary) setSummary(sum.summary)
-    } catch {
-      message.error('Failed to load cache')
-    } finally {
-      setLoading(false)
-    }
-  }, [page, siteId])
+  const { data: listData, isLoading: loading, error, mutate: mutateList } = useSWR<{
+    data: CacheEntry[]
+    total: number
+  }>(`/api/cache?${listParams}`)
+  const { data: sumData, mutate: mutateSummary } = useSWR<{
+    summary: { total: number; totalSizeBytes: number; avgTtlHours: number; hitRate: number }
+  }>(`/api/cache?${sumParams}`)
+
+  const rows = listData?.data ?? []
+  const total = listData?.total ?? 0
+  const summary = sumData?.summary ?? { total: 0, totalSizeBytes: 0, avgTtlHours: 0, hitRate: 0 }
+
+  // Revalidate both the list and the summary after any mutation.
+  const reload = () => Promise.all([mutateList(), mutateSummary()])
 
   useEffect(() => {
-    load()
-  }, [load])
+    if (error) message.error('Failed to load cache')
+  }, [error])
 
   // ── Real aggregate stats (whole cache, not just this page) ─────────────────
   const totalSizeKb = summary.totalSizeBytes / 1024
@@ -103,7 +99,7 @@ export default function CachePage() {
       })
       if (res.ok) message.success('Re-rendered')
       else message.error('Refresh failed')
-      await load()
+      await reload()
     } finally {
       setBusy(false)
     }
@@ -121,7 +117,7 @@ export default function CachePage() {
         })
       }
       message.success('All pages refreshed')
-      await load()
+      await reload()
     } finally {
       hide()
       setBusy(false)
@@ -131,7 +127,7 @@ export default function CachePage() {
   async function deleteOne(url: string) {
     await fetch(`/api/cache?url=${encodeURIComponent(url)}`, { method: 'DELETE' })
     message.success('Deleted')
-    await load()
+    await reload()
   }
 
   async function deleteSelected() {
@@ -143,7 +139,7 @@ export default function CachePage() {
       }
       message.success(`Deleted ${urls.length} entries`)
       setSelected([])
-      await load()
+      await reload()
     } finally {
       setBusy(false)
     }
@@ -156,7 +152,7 @@ export default function CachePage() {
     }
     await fetch(`/api/cache?action=clear-all&site_id=${siteId}`, { method: 'DELETE' })
     message.success('Cache cleared')
-    await load()
+    await reload()
   }
 
   async function openHtml(url: string) {

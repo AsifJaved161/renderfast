@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import {
   Row,
   Col,
@@ -54,12 +55,8 @@ const STATUS_TAG: Record<Status, string> = {
 }
 
 export default function CachingQueuePage() {
-  const [loading, setLoading] = useState(true)
-  const [rows, setRows] = useState<QueueItem[]>([])
-  const [total, setTotal] = useState(0)
-  const [page, setPage] = useState(1)
-  const [summary, setSummary] = useState({ pending: 0, rendering: 0, completed: 0, failed: 0 })
   const { sites } = useDashboard() // shared from the layout — no extra /api/sites call
+  const [page, setPage] = useState(1)
   const [siteId, setSiteId] = useState<string | undefined>()
   const [statusFilter, setStatusFilter] = useState<Status | undefined>()
   const [addOpen, setAddOpen] = useState(false)
@@ -67,52 +64,40 @@ export default function CachingQueuePage() {
   const [urlText, setUrlText] = useState('')
   const [adding, setAdding] = useState(false)
   const [processing, setProcessing] = useState(false)
-  const [live, setLive] = useState(false)
+  const [pollMs, setPollMs] = useState(0)
   const LIMIT = 20
 
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Queue list (paginated) + per-status summary via SWR — cached per filter key.
+  // refreshInterval is driven by pollMs: 5s while anything renders, else off.
+  const listParams = new URLSearchParams({ page: String(page), limit: String(LIMIT) })
+  if (siteId) listParams.set('site_id', siteId)
+  if (statusFilter) listParams.set('status', statusFilter)
+  const sumParams = new URLSearchParams({ summary: 'true' })
+  if (siteId) sumParams.set('site_id', siteId)
 
-  const load = useCallback(async () => {
-    try {
-      const params = new URLSearchParams({ page: String(page), limit: String(LIMIT) })
-      if (siteId) params.set('site_id', siteId)
-      if (statusFilter) params.set('status', statusFilter)
+  const { data: listData, isLoading: loading, error, mutate: mutateList } = useSWR<{
+    data: QueueItem[]
+    total: number
+  }>(`/api/queue?${listParams}`, { refreshInterval: pollMs })
+  const { data: sumData, mutate: mutateSummary } = useSWR<{
+    summary: { pending: number; rendering: number; completed: number; failed: number }
+  }>(`/api/queue?${sumParams}`, { refreshInterval: pollMs })
 
-      const sumParams = new URLSearchParams({ summary: 'true' })
-      if (siteId) sumParams.set('site_id', siteId)
-
-      const [list, sum] = await Promise.all([
-        fetch(`/api/queue?${params}`).then((r) => r.json()),
-        fetch(`/api/queue?${sumParams}`).then((r) => r.json()),
-      ])
-      setRows(list.data ?? [])
-      setTotal(list.total ?? 0)
-      if (sum.summary) setSummary(sum.summary)
-    } catch {
-      message.error('Failed to load queue')
-    } finally {
-      setLoading(false)
-    }
-  }, [page, siteId, statusFilter])
+  const rows = listData?.data ?? []
+  const total = listData?.total ?? 0
+  const summary = sumData?.summary ?? { pending: 0, rendering: 0, completed: 0, failed: 0 }
+  const reload = () => Promise.all([mutateList(), mutateSummary()])
 
   useEffect(() => {
-    setLoading(true)
-    load()
-  }, [load])
+    if (error) message.error('Failed to load queue')
+  }, [error])
 
-  // ── Auto-refresh every 5s while anything is rendering ──────────────────────
+  // Auto-poll every 5s while anything is rendering; stop when idle.
   const hasRendering = rows.some((r) => r.status === 'rendering') || summary.rendering > 0
+  const live = hasRendering
   useEffect(() => {
-    if (hasRendering) {
-      setLive(true)
-      timerRef.current = setInterval(load, 5000)
-    } else {
-      setLive(false)
-    }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [hasRendering, load])
+    setPollMs(hasRendering ? 5000 : 0)
+  }, [hasRendering])
 
   async function addUrls() {
     if (!addSite) {
@@ -142,7 +127,7 @@ export default function CachingQueuePage() {
       message.success(`Added ${data.added} URLs`)
       setAddOpen(false)
       setUrlText('')
-      await load()
+      await reload()
     } finally {
       setAdding(false)
     }
@@ -165,7 +150,7 @@ export default function CachingQueuePage() {
         const data = await res.json()
         processed += data.processed ?? 0
         failed += data.failed ?? 0
-        await load()
+        await reload()
         if (!data.processed && !data.failed) break
       }
       hide()
@@ -180,13 +165,13 @@ export default function CachingQueuePage() {
   async function retry(id: string) {
     await fetch(`/api/queue?id=${id}`, { method: 'PATCH' })
     message.success('Reset to pending')
-    await load()
+    await reload()
   }
 
   async function remove(id: string) {
     await fetch(`/api/queue?id=${id}`, { method: 'DELETE' })
     message.success('Removed')
-    await load()
+    await reload()
   }
 
   async function retryFailed() {
@@ -195,7 +180,7 @@ export default function CachingQueuePage() {
     const res = await fetch(`/api/queue?${params}`, { method: 'PATCH' })
     if (res.ok) {
       message.success('All failed URLs reset to pending')
-      await load()
+      await reload()
     } else {
       message.error('Retry failed')
     }
@@ -207,7 +192,7 @@ export default function CachingQueuePage() {
     const res = await fetch(`/api/queue?${params}`, { method: 'DELETE' })
     if (res.ok) {
       message.success('Cleared completed URLs')
-      await load()
+      await reload()
     } else {
       message.error('Clear failed')
     }

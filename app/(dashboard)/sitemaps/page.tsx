@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import {
   Card,
   Button,
@@ -21,15 +22,10 @@ import {
   GlobalOutlined,
   SyncOutlined,
 } from '@ant-design/icons'
+import { useDashboard } from '@/lib/dashboard-context'
 
 const BRAND = '#2da01d'
 const { Title, Text } = Typography
-
-interface Site {
-  id: string
-  domain: string
-  name: string | null
-}
 
 interface SitemapMeta {
   sitemap_url: string
@@ -78,63 +74,49 @@ function relativeTime(iso: string | null) {
 }
 
 export default function SitemapsPage() {
-  const [sites, setSites] = useState<Site[]>([])
+  const { sites } = useDashboard() // shared site list from the layout — no extra call
   const [siteId, setSiteId] = useState<string | undefined>()
-  const [meta, setMeta] = useState<SitemapMeta | null>(null)
-  const [urls, setUrls] = useState<UrlRow[]>([])
-  const [counts, setCounts] = useState<Counts>({ pending: 0, rendering: 0, completed: 0, failed: 0, total: 0 })
   const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
   const [statusFilter, setStatusFilter] = useState<UrlStatus | undefined>()
-  const [loading, setLoading] = useState(false)
   const [fetching, setFetching] = useState(false)
   const [rendering, setRendering] = useState(false)
   const [checking, setChecking] = useState(false)
   const [recheckDays, setRecheckDays] = useState(5)
   const limit = 25
 
-  // Load site list once; default to the first site.
+  // Default to the first site once the shared list arrives.
   useEffect(() => {
-    fetch('/api/sites')
-      .then((r) => r.json())
-      .then((d) => {
-        const list: Site[] = d.sites ?? []
-        setSites(list)
-        setSiteId((prev) => prev ?? list[0]?.id)
-      })
-      .catch(() => message.error('Failed to load sites'))
-  }, [])
+    setSiteId((prev) => prev ?? sites[0]?.id)
+  }, [sites])
 
-  const loadUrls = useCallback(async () => {
-    if (!siteId) {
-      setUrls([])
-      setMeta(null)
-      return
-    }
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({ site_id: siteId, page: String(page), limit: String(limit) })
-      if (statusFilter) params.set('status', statusFilter)
-      const [urlRes, smRes] = await Promise.all([
-        fetch(`/api/sitemaps/urls?${params}`).then((r) => r.json()),
-        fetch(`/api/sitemaps?site_id=${siteId}`).then((r) => r.json()),
-      ])
-      setUrls(urlRes.urls ?? [])
-      setTotal(urlRes.total ?? 0)
-      setCounts(urlRes.counts ?? { pending: 0, rendering: 0, completed: 0, failed: 0, total: 0 })
-      const m = (smRes.data ?? [])[0] ?? null
-      setMeta(m)
-      if (m?.check_interval_days) setRecheckDays(m.check_interval_days)
-    } catch {
-      message.error('Failed to load URLs')
-    } finally {
-      setLoading(false)
-    }
-  }, [siteId, page, statusFilter])
+  // URLs (paginated) + sitemap meta via SWR — cached per site/page/filter key.
+  const urlParams = new URLSearchParams({ site_id: siteId ?? '', page: String(page), limit: String(limit) })
+  if (statusFilter) urlParams.set('status', statusFilter)
+  const { data: urlData, isLoading: loading, error, mutate: mutateUrls } = useSWR<{
+    urls: UrlRow[]
+    total: number
+    counts: Counts
+  }>(siteId ? `/api/sitemaps/urls?${urlParams}` : null)
+  const { data: smData, mutate: mutateMeta } = useSWR<{ data: SitemapMeta[] }>(
+    siteId ? `/api/sitemaps?site_id=${siteId}` : null
+  )
+
+  const urls = urlData?.urls ?? []
+  const total = urlData?.total ?? 0
+  const counts: Counts = urlData?.counts ?? { pending: 0, rendering: 0, completed: 0, failed: 0, total: 0 }
+  const meta = (smData?.data ?? [])[0] ?? null
+
+  // Revalidate both the URL list and the sitemap meta (after any mutation).
+  const reload = () => Promise.all([mutateUrls(), mutateMeta()])
 
   useEffect(() => {
-    loadUrls()
-  }, [loadUrls])
+    if (error) message.error('Failed to load URLs')
+  }, [error])
+
+  // Adopt the saved re-check interval once meta loads.
+  useEffect(() => {
+    if (meta?.check_interval_days) setRecheckDays(meta.check_interval_days)
+  }, [meta?.check_interval_days])
 
   // Reset to page 1 when the site or filter changes.
   useEffect(() => {
@@ -159,7 +141,7 @@ export default function SitemapsPage() {
         message: 'Sitemap fetched',
         description: `${data.found} URLs found · ${data.queued} newly queued.`,
       })
-      await loadUrls()
+      await reload()
     } finally {
       setFetching(false)
     }
@@ -179,7 +161,7 @@ export default function SitemapsPage() {
       }
       if (totalProcessed > 0) message.success(`Rendered ${totalProcessed} URL(s)`)
       else message.info('Nothing pending to render')
-      await loadUrls()
+      await reload()
     } finally {
       setRendering(false)
     }
@@ -208,7 +190,7 @@ export default function SitemapsPage() {
             ? `${data.found} URLs scanned · ${data.queued} new/updated page(s) queued for render.`
             : `${data.found} URLs scanned · nothing changed since last render.`,
       })
-      await loadUrls()
+      await reload()
     } finally {
       setChecking(false)
     }

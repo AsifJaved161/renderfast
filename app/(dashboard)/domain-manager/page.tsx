@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import {
   Row,
@@ -59,33 +60,25 @@ const STATUS_BADGE: Record<Site['status'], 'success' | 'warning' | 'default'> = 
 
 export default function DomainManagerPage() {
   const router = useRouter()
-  const [loading, setLoading] = useState(true)
-  const [sites, setSites] = useState<Site[]>([])
-  const [limit, setLimit] = useState<number | null>(null)
-  const [plan, setPlan] = useState<string>('free')
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [addOpen, setAddOpen] = useState(false)
   const [adding, setAdding] = useState(false)
   const [form] = Form.useForm()
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const res = await fetch('/api/sites?with_stats=1')
-      const json = await res.json()
-      setSites(json.sites ?? [])
-      setLimit(json.limit ?? null)
-      setPlan(json.plan ?? 'free')
-    } catch {
-      message.error('Failed to load sites')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+  // Sites (+ per-site stats) via SWR — cached, so returning to this page is
+  // instant and revalidates in the background.
+  const { data, isLoading: loading, error, mutate } = useSWR<{
+    sites: Site[]
+    limit: number | null
+    plan: string
+  }>('/api/sites?with_stats=1')
+  const sites = data?.sites ?? []
+  const limit = data?.limit ?? null
+  const plan = data?.plan ?? 'free'
 
   useEffect(() => {
-    load()
-  }, [load])
+    if (error) message.error('Failed to load sites')
+  }, [error])
 
   async function addDomain(values: { domain: string; name: string }) {
     // Instant duplicate check against already-loaded sites (www-tolerant).
@@ -109,7 +102,7 @@ export default function DomainManagerPage() {
       message.success('Site added')
       setAddOpen(false)
       form.resetFields()
-      await load()
+      await mutate()
       // Sitemap auto-discovery + URL queueing now runs server-side (see POST /api/sites).
       if (data.site?.id) {
         message.info('Fetching sitemap — URLs will appear in the Sitemaps & Caching Queue sections.')
