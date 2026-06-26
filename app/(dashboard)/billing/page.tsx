@@ -80,6 +80,13 @@ export default function BillingPage() {
   const { data: invoiceData, isLoading: loadingInvoices } = useSWR<InvoiceData>('/api/billing/invoices')
   const invoices = invoiceData?.invoices ?? []
   const upcoming = invoiceData?.upcoming ?? null
+  // Per-site render usage this billing period.
+  const { data: usageData, isLoading: loadingUsage } = useSWR<{
+    total: number
+    sites: { siteId: string; domain: string; name: string | null; renders: number }[]
+  }>('/api/billing/usage-by-site')
+  const siteUsage = usageData?.sites ?? []
+  const usageTotal = usageData?.total ?? 0
 
   const loading = loadingMe || loadingAnalytics
   const plan: PlanKey = me?.user?.plan ?? 'free'
@@ -244,6 +251,51 @@ export default function BillingPage() {
             fill
           />
         )}
+      </Card>
+
+      {/* ── Renders by site (this billing period) ───────────────────────────── */}
+      <Card title="Renders by Site (this month)" style={{ marginBottom: 24 }}>
+        <Table<{ siteId: string; domain: string; name: string | null; renders: number }>
+          rowKey="siteId"
+          loading={loadingUsage}
+          pagination={false}
+          dataSource={siteUsage}
+          locale={{ emptyText: 'No renders yet this period.' }}
+          columns={[
+            {
+              title: 'Site',
+              dataIndex: 'domain',
+              render: (_, r) => (
+                <span>
+                  <Text strong>{r.name || r.domain}</Text>
+                  {r.name && <Text type="secondary" style={{ marginLeft: 8 }}>{r.domain}</Text>}
+                </span>
+              ),
+            },
+            {
+              title: 'Renders',
+              dataIndex: 'renders',
+              width: 140,
+              align: 'right',
+              render: (v: number) => v.toLocaleString(),
+            },
+            {
+              title: 'Share',
+              width: 100,
+              align: 'right',
+              render: (_, r) => (usageTotal > 0 ? `${Math.round((r.renders / usageTotal) * 100)}%` : '0%'),
+            },
+          ]}
+          summary={() =>
+            siteUsage.length > 0 ? (
+              <Table.Summary.Row>
+                <Table.Summary.Cell index={0}><Text strong>Total</Text></Table.Summary.Cell>
+                <Table.Summary.Cell index={1} align="right"><Text strong>{usageTotal.toLocaleString()}</Text></Table.Summary.Cell>
+                <Table.Summary.Cell index={2} align="right"><Text strong>100%</Text></Table.Summary.Cell>
+              </Table.Summary.Row>
+            ) : null
+          }
+        />
       </Card>
 
       {/* ── Invoice history ─────────────────────────────────────────────────── */}
