@@ -43,6 +43,7 @@ import {
   MenuUnfoldOutlined,
 } from '@ant-design/icons'
 import { DashboardContext } from '@/lib/dashboard-context'
+import AppProviders from '@/components/providers/AppProviders'
 import { useClearUserCache } from '@/lib/client-session'
 import { AccountSwitcher } from '@/components/dashboard/AccountSwitcher'
 import { PLAN_LIMITS } from '@/lib/constants'
@@ -320,10 +321,27 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
   }
 
   return (
+    <AppProviders>
     <ConfigProvider
       theme={{
         algorithm: mode === 'dark' ? theme.darkAlgorithm : theme.defaultAlgorithm,
-        token: { colorPrimary: BRAND },
+        // Tokens previously supplied by the now-removed root AntdProvider, folded
+        // in here so the dashboard look is unchanged (compact text, green menu).
+        token: { colorPrimary: BRAND, colorLink: BRAND, colorLinkHover: '#248217', borderRadius: 6, fontSize: 13 },
+        components: {
+          Menu: {
+            itemSelectedBg: '#e8fae5',
+            itemSelectedColor: '#2da01d',
+            itemHoverBg: '#f9fafb',
+            itemHoverColor: '#111827',
+            iconSize: 15,
+            itemHeight: 40,
+            activeBarWidth: 0,
+            activeBarBorderWidth: 0,
+          },
+          Button: { borderRadius: 6 },
+          Drawer: { paddingLG: 0 },
+        },
       }}
     >
       <DashboardContext.Provider value={{ user, selectedSiteId, setSelectedSiteId, sites }}>
@@ -509,5 +527,6 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
         </Layout>
       </DashboardContext.Provider>
     </ConfigProvider>
+    </AppProviders>
   )
 }

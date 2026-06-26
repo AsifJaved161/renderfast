@@ -3,20 +3,16 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Form, Input, Button, Alert, Typography, Spin } from 'antd'
-import { LockOutlined, EyeTwoTone, EyeInvisibleOutlined } from '@ant-design/icons'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 
-const BRAND = '#2da01d'
-const { Title, Text } = Typography
-
-// Step 2 of password recovery: the user arrives here from the email link, which
-// carries a recovery session (PKCE `?code=` or a recovery token in the URL hash).
-// We establish that session, then let them set a new password via updateUser.
+// Step 2 of password recovery: the user arrives from the email link carrying a
+// recovery session (PKCE ?code= or a recovery token in the URL hash). We
+// establish that session, then let them set a new password via updateUser.
 export default function ResetPasswordPage() {
   const router = useRouter()
   const [status, setStatus] = useState<'checking' | 'ready' | 'invalid'>('checking')
   const [loading, setLoading] = useState(false)
+  const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
 
@@ -24,9 +20,6 @@ export default function ResetPasswordPage() {
     const supabase = getSupabaseBrowser()
     let cancelled = false
 
-    // A recovery session may arrive three ways: already established (the JS client
-    // auto-detected the URL), a PKCE `?code=` we must exchange, or via the hash
-    // flow (handled by detectSessionInUrl → onAuthStateChange below).
     ;(async () => {
       const { data } = await supabase.auth.getSession()
       if (data.session) {
@@ -39,8 +32,7 @@ export default function ResetPasswordPage() {
         if (!cancelled) setStatus(error ? 'invalid' : 'ready')
         return
       }
-      // No session and no code yet — give detectSessionInUrl a moment to fire
-      // onAuthStateChange (hash flow); otherwise treat the link as invalid.
+      // No session/code yet — give detectSessionInUrl (hash flow) a moment to fire.
       setTimeout(() => {
         if (!cancelled) setStatus((s) => (s === 'checking' ? 'invalid' : s))
       }, 1500)
@@ -55,12 +47,20 @@ export default function ResetPasswordPage() {
     }
   }, [])
 
-  async function onFinish(values: { password: string }) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const form = new FormData(e.currentTarget)
+    const password = String(form.get('password') ?? '')
+    const confirm = String(form.get('confirm') ?? '')
     setError(null)
+    if (password !== confirm) {
+      setError('Passwords do not match')
+      return
+    }
     setLoading(true)
     try {
       const supabase = getSupabaseBrowser()
-      const { error } = await supabase.auth.updateUser({ password: values.password })
+      const { error } = await supabase.auth.updateUser({ password })
       if (error) {
         setError(error.message)
         return
@@ -78,88 +78,64 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ width: '100%', maxWidth: 400 }}>
-        <Title level={2} style={{ marginBottom: 4 }}>
-          Set a new password
-        </Title>
-        <Text type="secondary" style={{ display: 'block', marginBottom: 24 }}>
-          Choose a strong password for your RenderForAI account.
-        </Text>
+    <div className="auth-page">
+      <div className="auth-form-col">
+        <div className="auth-form-inner">
+          <h1 className="auth-h1">Set a new password</h1>
+          <p className="auth-sub">Choose a strong password for your RenderForAI account.</p>
 
-        {status === 'checking' && (
-          <div style={{ textAlign: 'center', padding: '32px 0' }}>
-            <Spin />
-          </div>
-        )}
+          {status === 'checking' && (
+            <div style={{ textAlign: 'center', padding: '32px 0' }}>
+              <span
+                style={{
+                  width: 32, height: 32, border: '3px solid #e5e7eb', borderTopColor: '#2da01d',
+                  borderRadius: '50%', display: 'inline-block', animation: 'rf-spin 0.8s linear infinite',
+                }}
+              />
+              <style>{`@keyframes rf-spin { to { transform: rotate(360deg) } }`}</style>
+            </div>
+          )}
 
-        {status === 'invalid' && (
-          <>
-            <Alert
-              type="error"
-              showIcon
-              message="This reset link is invalid or has expired"
-              description="Request a new link and try again."
-              style={{ marginBottom: 24 }}
-            />
-            <Link href="/forgot-password" style={{ color: BRAND }}>
-              Request a new reset link
-            </Link>
-          </>
-        )}
+          {status === 'invalid' && (
+            <>
+              <div className="auth-error">This reset link is invalid or has expired. Request a new one.</div>
+              <p className="auth-foot">
+                <Link href="/forgot-password" className="auth-link">Request a new reset link</Link>
+              </p>
+            </>
+          )}
 
-        {status === 'ready' && (
-          <>
-            {error && (
-              <Alert type="error" message={error} showIcon closable onClose={() => setError(null)} style={{ marginBottom: 16 }} />
-            )}
-            {done ? (
-              <Alert type="success" showIcon message="Password updated — signing you in…" />
+          {status === 'ready' && (
+            done ? (
+              <div className="auth-success">Password updated — signing you in…</div>
             ) : (
-              <Form layout="vertical" onFinish={onFinish} requiredMark={false} size="large">
-                <Form.Item
-                  name="password"
-                  label="New password"
-                  rules={[
-                    { required: true, message: 'Enter a new password' },
-                    { min: 8, message: 'Use at least 8 characters' },
-                  ]}
-                  hasFeedback
-                >
-                  <Input.Password
-                    prefix={<LockOutlined />}
-                    placeholder="••••••••"
-                    iconRender={(v) => (v ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="confirm"
-                  label="Confirm password"
-                  dependencies={['password']}
-                  hasFeedback
-                  rules={[
-                    { required: true, message: 'Confirm your password' },
-                    ({ getFieldValue }) => ({
-                      validator(_, value) {
-                        if (!value || getFieldValue('password') === value) return Promise.resolve()
-                        return Promise.reject(new Error('Passwords do not match'))
-                      },
-                    }),
-                  ]}
-                >
-                  <Input.Password
-                    prefix={<LockOutlined />}
-                    placeholder="••••••••"
-                    iconRender={(v) => (v ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
-                  />
-                </Form.Item>
-                <Button type="primary" htmlType="submit" loading={loading} block style={{ background: BRAND, borderColor: BRAND }}>
-                  Update password
-                </Button>
-              </Form>
-            )}
-          </>
-        )}
+              <>
+                {error && <div className="auth-error" role="alert">{error}</div>}
+                <form onSubmit={onSubmit}>
+                  <div className="auth-field">
+                    <label className="auth-label" htmlFor="password">New password</label>
+                    <div className="auth-input-wrap">
+                      <input id="password" name="password" type={showPw ? 'text' : 'password'} required
+                        minLength={8} autoComplete="new-password" className="auth-input" placeholder="••••••••" />
+                      <button type="button" className="auth-toggle" onClick={() => setShowPw((v) => !v)}
+                        aria-label={showPw ? 'Hide password' : 'Show password'}>
+                        {showPw ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="auth-field">
+                    <label className="auth-label" htmlFor="confirm">Confirm password</label>
+                    <input id="confirm" name="confirm" type={showPw ? 'text' : 'password'} required
+                      minLength={8} autoComplete="new-password" className="auth-input" placeholder="••••••••" />
+                  </div>
+                  <button type="submit" className="auth-btn auth-btn-primary" disabled={loading}>
+                    {loading ? 'Updating…' : 'Update password'}
+                  </button>
+                </form>
+              </>
+            )
+          )}
+        </div>
       </div>
     </div>
   )

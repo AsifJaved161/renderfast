@@ -1,7 +1,4 @@
 import type { Metadata } from 'next'
-import { AntdRegistry } from '@ant-design/nextjs-registry'
-import AntdProvider from '@/components/layout/AntdProvider'
-import SWRProvider from '@/components/providers/SWRProvider'
 import './globals.css'
 
 // System font stack (uses Inter if installed locally, else native UI fonts).
@@ -19,16 +16,31 @@ export const metadata: Metadata = {
   icons: { icon: '/favicon.ico' },
 }
 
+// Supabase origin (auth + OAuth + storage avatars). Preconnecting lets the
+// browser open the TLS connection early so the first auth call isn't delayed —
+// Google's "Preconnect to required origins" guidance.
+const SUPABASE_ORIGIN = (() => {
+  try {
+    return new URL((process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim()).origin
+  } catch {
+    return ''
+  }
+})()
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, padding: 0, fontFamily: FONT_STACK }}>
-        <SWRProvider>
-          <AntdRegistry>
-            <AntdProvider>{children}</AntdProvider>
-          </AntdRegistry>
-        </SWRProvider>
-      </body>
+      <head>
+        {SUPABASE_ORIGIN && (
+          <>
+            <link rel="preconnect" href={SUPABASE_ORIGIN} crossOrigin="" />
+            <link rel="dns-prefetch" href={SUPABASE_ORIGIN} />
+          </>
+        )}
+      </head>
+      {/* No Ant Design / SWR here — those load only inside the (dashboard) and
+          (admin) layouts (see AppProviders), so public auth pages stay light. */}
+      <body style={{ margin: 0, padding: 0, fontFamily: FONT_STACK }}>{children}</body>
     </html>
   )
 }

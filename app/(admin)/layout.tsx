@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { ConfigProvider, theme, Layout, Spin } from 'antd'
+import AppProviders from '@/components/providers/AppProviders'
 import AdminSidebar from '@/components/admin/AdminSidebar'
 import AdminHeader from '@/components/admin/AdminHeader'
 
@@ -14,6 +15,7 @@ const adminTheme = {
     colorPrimary: BRAND,
     colorLink: BRAND,
     borderRadius: 8,
+    fontSize: 13,
   },
   components: {
     Layout: { siderBg: '#ffffff', headerBg: '#ffffff', bodyBg: '#f9fafb' },
@@ -49,10 +51,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [isLoginPage, router])
 
   if (isLoginPage) {
-    return <ConfigProvider theme={adminTheme}>{children}</ConfigProvider>
+    return (
+      <AppProviders>
+        <ConfigProvider theme={adminTheme}>{children}</ConfigProvider>
+      </AppProviders>
+    )
   }
 
   return (
+    <AppProviders>
     <ConfigProvider theme={adminTheme}>
       {checking || !allowed ? (
         <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9fafb' }}>
@@ -68,5 +75,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </Layout>
       )}
     </ConfigProvider>
+    </AppProviders>
   )
 }

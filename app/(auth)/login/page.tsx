@@ -3,37 +3,28 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Form, Input, Button, Checkbox, Alert, Divider } from 'antd'
-import {
-  MailOutlined,
-  LockOutlined,
-  EyeTwoTone,
-  EyeInvisibleOutlined,
-  ThunderboltOutlined,
-  RobotOutlined,
-  AppstoreOutlined,
-  GoogleOutlined,
-} from '@ant-design/icons'
-import { getSupabaseBrowser } from '@/lib/supabase-browser'
-import { useClearUserCache } from '@/lib/client-session'
-
-const BRAND = '#2da01d'
+import { clearUserClientState } from '@/lib/client-session'
+import BrandPanel from '../BrandPanel'
 
 export default function LoginPage() {
   const router = useRouter()
-  const clearUserCache = useClearUserCache()
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function onFinish(values: { email: string; password: string }) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const form = new FormData(e.currentTarget)
+    const email = String(form.get('email') ?? '')
+    const password = String(form.get('password') ?? '')
     setError(null)
     setLoading(true)
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: values.email, password: values.password }),
+        body: JSON.stringify({ email, password }),
       })
       const data = await res.json()
       if (!res.ok) {
@@ -41,7 +32,7 @@ export default function LoginPage() {
         return
       }
       // Drop any cache left by a previous account before entering the app.
-      clearUserCache()
+      clearUserClientState()
       router.push('/dashboard')
       router.refresh()
     } catch {
@@ -53,172 +44,85 @@ export default function LoginPage() {
 
   async function signInWithGoogle() {
     setGoogleLoading(true)
-    // Clear any prior account's cache before redirecting to Google.
-    clearUserCache()
+    clearUserClientState() // clear any prior account's cache before redirecting
+    // Lazy-load the Supabase browser client only on Google click → keeps it out
+    // of the initial login bundle (email/password sign-in goes via /api/auth/login).
+    const { getSupabaseBrowser } = await import('@/lib/supabase-browser')
     const supabase = getSupabaseBrowser()
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${window.location.origin}/api/auth/callback`,
-        // Always show the Google account picker instead of silently reusing the
-        // browser's existing Google session.
         queryParams: { prompt: 'select_account' },
       },
     })
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      {/* ── Left: form (60%) ─────────────────────────────────────────────── */}
-      <div
-        style={{
-          flex: '0 0 60%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '24px',
-        }}
-        className="rf-auth-form-col"
-      >
-        <div style={{ width: '100%', maxWidth: 400 }}>
-          <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>Welcome back</h1>
-          <p style={{ color: '#888', marginBottom: 24 }}>Sign in to your RenderForAI account</p>
+    <div className="auth-page">
+      <div className="auth-form-col">
+        <div className="auth-form-inner">
+          <h1 className="auth-h1">Welcome back</h1>
+          <p className="auth-sub">Sign in to your RenderForAI account</p>
 
-          {error && (
-            <Alert
-              type="error"
-              message={error}
-              showIcon
-              closable
-              onClose={() => setError(null)}
-              style={{ marginBottom: 16 }}
-            />
-          )}
+          {error && <div className="auth-error" role="alert">{error}</div>}
 
-          <Form layout="vertical" onFinish={onFinish} requiredMark={false} size="large">
-            <Form.Item
-              name="email"
-              label="Email"
-              rules={[{ required: true, type: 'email', message: 'Enter a valid email' }]}
-            >
-              <Input prefix={<MailOutlined />} placeholder="you@example.com" />
-            </Form.Item>
-
-            <Form.Item
-              name="password"
-              label="Password"
-              rules={[{ required: true, message: 'Enter your password' }]}
-            >
-              <Input.Password
-                prefix={<LockOutlined />}
-                placeholder="••••••••"
-                iconRender={(v) => (v ? <EyeTwoTone /> : <EyeInvisibleOutlined />)}
-              />
-            </Form.Item>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-              <Form.Item name="remember" valuePropName="checked" noStyle>
-                <Checkbox>Remember me</Checkbox>
-              </Form.Item>
-              <Link href="/forgot-password" style={{ color: BRAND }}>
-                Forgot password?
-              </Link>
+          <form onSubmit={onSubmit} noValidate={false}>
+            <div className="auth-field">
+              <label className="auth-label" htmlFor="email">Email</label>
+              <input id="email" name="email" type="email" required autoComplete="email"
+                className="auth-input" placeholder="you@example.com" />
             </div>
 
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={loading}
-              block
-              style={{ background: BRAND, borderColor: BRAND }}
-            >
-              Sign in
-            </Button>
-          </Form>
+            <div className="auth-field">
+              <label className="auth-label" htmlFor="password">Password</label>
+              <div className="auth-input-wrap">
+                <input id="password" name="password" type={showPw ? 'text' : 'password'} required
+                  autoComplete="current-password" className="auth-input" placeholder="••••••••" />
+                <button type="button" className="auth-toggle" onClick={() => setShowPw((v) => !v)}
+                  aria-label={showPw ? 'Hide password' : 'Show password'}>
+                  {showPw ? 'Hide' : 'Show'}
+                </button>
+              </div>
+            </div>
 
-          <Divider plain style={{ color: '#aaa' }}>
-            or
-          </Divider>
+            <div className="auth-row">
+              <label className="auth-checkbox">
+                <input type="checkbox" name="remember" /> Remember me
+              </label>
+              <Link href="/forgot-password" className="auth-link">Forgot password?</Link>
+            </div>
 
-          <Button
-            icon={<GoogleOutlined />}
-            block
-            size="large"
-            loading={googleLoading}
-            onClick={signInWithGoogle}
-          >
-            Sign in with Google
-          </Button>
+            <button type="submit" className="auth-btn auth-btn-primary" disabled={loading}>
+              {loading ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
 
-          <p style={{ textAlign: 'center', marginTop: 24, color: '#888' }}>
+          <div className="auth-divider">or</div>
+
+          <button type="button" className="auth-btn" onClick={signInWithGoogle} disabled={googleLoading}>
+            <GoogleIcon /> {googleLoading ? 'Redirecting…' : 'Sign in with Google'}
+          </button>
+
+          <p className="auth-foot">
             Don&apos;t have an account?{' '}
-            <Link href="/signup" style={{ color: BRAND, fontWeight: 600 }}>
-              Sign up
-            </Link>
+            <Link href="/signup" className="auth-link" style={{ fontWeight: 600 }}>Sign up</Link>
           </p>
         </div>
       </div>
 
-      {/* ── Right: brand panel (40%) ─────────────────────────────────────── */}
       <BrandPanel />
-
-      <style>{`
-        @media (max-width: 768px) {
-          .rf-auth-form-col { flex: 1 1 100% !important; }
-          .rf-auth-brand-col { display: none !important; }
-        }
-      `}</style>
     </div>
   )
 }
 
-function BrandPanel() {
-  const features = [
-    { icon: <ThunderboltOutlined />, text: 'Lightning-fast prerendering' },
-    { icon: <RobotOutlined />, text: 'AI bot support (GPTBot, ClaudeBot, Perplexity)' },
-    { icon: <AppstoreOutlined />, text: 'One-click WordPress plugin' },
-  ]
+function GoogleIcon() {
   return (
-    <div
-      className="rf-auth-brand-col"
-      style={{
-        flex: '0 0 40%',
-        background: 'linear-gradient(160deg, #1a1a2e 0%, #16213e 100%)',
-        color: '#fff',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        padding: '48px',
-      }}
-    >
-      <div style={{ fontSize: 32, fontWeight: 800, marginBottom: 24 }}>
-        Render<span style={{ color: '#2da01d' }}>ForAI</span>
-      </div>
-      <h2 style={{ color: '#fff', fontSize: 26, fontWeight: 700, lineHeight: 1.3, marginBottom: 32 }}>
-        Make your SPA visible to every search engine
-      </h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-        {features.map((f, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <span
-              style={{
-                fontSize: 20,
-                color: '#2da01d',
-                background: 'rgba(45,160,29,0.15)',
-                width: 40,
-                height: 40,
-                borderRadius: 10,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              {f.icon}
-            </span>
-            <span style={{ fontSize: 16, color: '#d0d4dc' }}>{f.text}</span>
-          </div>
-        ))}
-      </div>
-    </div>
+    <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+    </svg>
   )
 }

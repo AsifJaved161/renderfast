@@ -1,8 +1,11 @@
 'use client'
 
 import { useEffect } from 'react'
-import { Button, Result, ConfigProvider, theme } from 'antd'
 
+const BRAND = '#2da01d'
+
+// Root error boundary — pure HTML/CSS (no Ant Design) so the root shell carries
+// no component-library JS. Kept deliberately minimal.
 export default function Error({
   error,
   reset,
@@ -14,32 +17,45 @@ export default function Error({
     console.error(error)
   }, [error])
 
+  const btn: React.CSSProperties = {
+    padding: '8px 18px',
+    borderRadius: 6,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: 'pointer',
+    border: '1px solid #d9d9d9',
+    background: '#fff',
+    color: '#1f2937',
+  }
+
   return (
-    <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm, token: { colorPrimary: '#2da01d' } }}>
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: '#f9fafb',
-          padding: 24,
-        }}
-      >
-        <Result
-          status="error"
-          title="Something went wrong"
-          subTitle={error.message || 'An unexpected error occurred.'}
-          extra={[
-            <Button key="retry" type="primary" onClick={reset}>
-              Try Again
-            </Button>,
-            <Button key="home" href="/dashboard">
-              Go to Dashboard
-            </Button>,
-          ]}
-        />
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f9fafb',
+        padding: 24,
+        textAlign: 'center',
+        fontFamily: 'inherit',
+      }}
+    >
+      <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1f2937', margin: '0 0 8px' }}>
+        Something went wrong
+      </h1>
+      <p style={{ color: '#6b7280', maxWidth: 440, margin: '0 0 24px' }}>
+        {error.message || 'An unexpected error occurred.'}
+      </p>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <button onClick={reset} style={{ ...btn, background: BRAND, borderColor: BRAND, color: '#fff' }}>
+          Try again
+        </button>
+        <a href="/dashboard" style={{ ...btn, textDecoration: 'none' }}>
+          Go to Dashboard
+        </a>
       </div>
-    </ConfigProvider>
+    </div>
   )
 }

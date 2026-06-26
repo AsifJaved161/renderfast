@@ -1,8 +1,5 @@
-import { Spin } from 'antd'
-
-// Global navigation fallback. Uses the app's default (light) surface colour so
-// there's no dark→light flash on first load / route transitions — the dashboard
-// defaults to light mode (see AntdProvider + the dashboard layout palette).
+// Global navigation fallback — pure CSS (no Ant Design), so the root shell ships
+// zero component-library JS. Light surface to match the app's default theme.
 export default function Loading() {
   return (
     <div
@@ -14,7 +11,18 @@ export default function Loading() {
         background: '#f9fafb',
       }}
     >
-      <Spin size="large" />
+      <span
+        style={{
+          width: 40,
+          height: 40,
+          border: '3px solid #e5e7eb',
+          borderTopColor: '#2da01d',
+          borderRadius: '50%',
+          display: 'inline-block',
+          animation: 'rf-spin 0.8s linear infinite',
+        }}
+      />
+      <style>{`@keyframes rf-spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )
 }
