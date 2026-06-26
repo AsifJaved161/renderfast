@@ -78,6 +78,37 @@ const EMPTY: Analytics = {
   },
 }
 
+// Keep the Renders Trend bar chart readable over ANY range: show daily bars for
+// short spans, then automatically roll up to weekly, then monthly, so a full
+// year renders as ~12 bars instead of 365. Buckets sum the daily render counts.
+function bucketRenderTrend(trend: { date: string; renders: number }[]): {
+  granularity: 'Daily' | 'Weekly' | 'Monthly'
+  data: { label: string; value: number }[]
+} {
+  if (trend.length <= 31) {
+    return { granularity: 'Daily', data: trend.map((t) => ({ label: t.date.slice(5), value: t.renders })) }
+  }
+  const monthly = trend.length > 140
+  const buckets = new Map<string, number>()
+  for (const t of trend) {
+    let key: string
+    if (monthly) {
+      key = t.date.slice(0, 7) // YYYY-MM
+    } else {
+      // Roll up to the week's Monday (UTC) so weeks group consistently.
+      const d = new Date(t.date + 'T00:00:00Z')
+      const dow = d.getUTCDay() || 7 // Mon=1 … Sun=7
+      d.setUTCDate(d.getUTCDate() - (dow - 1))
+      key = d.toISOString().slice(0, 10)
+    }
+    buckets.set(key, (buckets.get(key) ?? 0) + t.renders)
+  }
+  const data = [...buckets.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key, value]) => ({ label: monthly ? key : key.slice(5), value }))
+  return { granularity: monthly ? 'Monthly' : 'Weekly', data }
+}
+
 export default function DashboardPage() {
   const { sites, user } = useDashboard() // shared from the layout — no extra calls
   const [siteId, setSiteId] = useState<string | undefined>()
@@ -130,6 +161,8 @@ export default function DashboardPage() {
   const hasActivity = d.summary.totalRenders > 0 || d.summary.totalBotRequests > 0
   // The cost widget is per-site; fall back to the first site when "All sites".
   const costSiteId = siteId ?? sites[0]?.id
+  // Adaptive trend (daily → weekly → monthly) so long ranges stay readable.
+  const renderTrendChart = bucketRenderTrend(d.renderTrend)
 
   return (
     <div style={{ padding: 24 }}>
@@ -298,13 +331,18 @@ export default function DashboardPage() {
           </Card>
         </Col>
         <Col xs={24} lg={6}>
-          <Card title="Renders Trend">
+          <Card
+            title="Renders Trend"
+            extra={
+              !loading && d.renderTrend.length > 31 ? (
+                <Text type="secondary" style={{ fontSize: 12 }}>{renderTrendChart.granularity}</Text>
+              ) : undefined
+            }
+          >
             {loading ? (
               <Skeleton active />
             ) : (
-              <BarChart
-                data={d.renderTrend.map((t) => ({ label: t.date.length > 5 ? t.date.slice(5) : t.date, value: t.renders }))}
-              />
+              <BarChart data={renderTrendChart.data} />
             )}
           </Card>
         </Col>
