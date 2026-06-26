@@ -20,6 +20,9 @@ const JOBS: { name: string; path: string }[] = [
   { name: 'sitemaps', path: '/api/sitemaps/recheck' },
   { name: 'llms', path: '/api/llms/regenerate' },
   { name: 'digest', path: '/api/email/digest' },
+  // Resets monthly render_count + sends usage warnings. Without this a user who
+  // hits their render limit would stay blocked forever (usage never resets).
+  { name: 'usage', path: '/api/email/usage-check' },
 ]
 
 export async function GET(req: NextRequest) {

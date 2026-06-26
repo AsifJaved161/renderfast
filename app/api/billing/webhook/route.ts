@@ -24,8 +24,15 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Process asynchronously; acknowledge to Stripe immediately.
-  handleEvent(event).catch((e) => console.error('webhook handler error', e))
+  // Process synchronously so a transient failure returns 500 and Stripe RETRIES
+  // the event (otherwise a paid upgrade could be lost forever on a DB hiccup).
+  // Every handler is idempotent (absolute updates), so retries are safe.
+  try {
+    await handleEvent(event)
+  } catch (e) {
+    console.error('webhook handler error', e)
+    return NextResponse.json({ error: 'handler failed' }, { status: 500 })
+  }
   return NextResponse.json({ received: true })
 }
 
