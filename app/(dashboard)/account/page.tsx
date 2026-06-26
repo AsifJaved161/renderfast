@@ -108,7 +108,7 @@ export default function AccountPage() {
     try {
       const supabase = getSupabaseBrowser()
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/login`,
+        redirectTo: `${window.location.origin}/reset-password`,
       })
       error
         ? message.error(error.message)
