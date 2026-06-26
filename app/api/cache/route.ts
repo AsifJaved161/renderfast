@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { setCachedPage, deleteCachedPage, clearDomainCache } from '@/lib/kv'
 import { renderPage } from '@/lib/renderer'
 import { supabaseAdmin } from '@/lib/supabase'
+import { applyUrlSearch } from '@/lib/query-filter'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -133,6 +134,12 @@ export async function GET(req: NextRequest) {
     .range((page - 1) * limit, page * limit - 1)
   if (siteId) query = query.eq('site_id', siteId)
   query = excludeJunk(query)
+  // Advanced filters: URL search (wildcards/exclude) + cached-at date range.
+  query = applyUrlSearch(query, 'url', searchParams.get('q'))
+  const from = searchParams.get('from')
+  const to = searchParams.get('to')
+  if (from) query = query.gte('cached_at', from)
+  if (to) query = query.lte('cached_at', to)
 
   const { data, count, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })

@@ -9,6 +9,7 @@ import {
   Statistic,
   Button,
   Select,
+  Input,
   Table,
   Tag,
   Tooltip,
@@ -57,15 +58,17 @@ export default function CachePage() {
   const { sites } = useDashboard() // shared from the layout — no extra /api/sites call
   const [page, setPage] = useState(1)
   const [siteId, setSiteId] = useState<string | undefined>()
+  const [q, setQ] = useState('')
   const [selected, setSelected] = useState<React.Key[]>([])
   const [busy, setBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [viewHtml, setViewHtml] = useState<{ url: string; html: string } | null>(null)
   const LIMIT = 20
 
-  // Cache list (paginated) + aggregate summary via SWR — cached per site/page.
+  // Cache list (paginated) + aggregate summary via SWR — cached per site/page/filter.
   const listParams = new URLSearchParams({ page: String(page), limit: String(LIMIT) })
   if (siteId) listParams.set('site_id', siteId)
+  if (q) listParams.set('q', q)
   const sumParams = new URLSearchParams({ summary: 'true' })
   if (siteId) sumParams.set('site_id', siteId)
 
@@ -233,6 +236,13 @@ export default function CachePage() {
               setPage(1)
             }}
             options={sites.map((s) => ({ value: s.id, label: s.domain }))}
+          />
+          <Input.Search
+            allowClear
+            placeholder="Filter URLs (use * and -exclude)"
+            defaultValue={q}
+            onSearch={(v) => { setQ(v.trim()); setPage(1) }}
+            style={{ width: 240 }}
           />
           <Button icon={<ExportOutlined />} loading={exporting} onClick={exportCsv} disabled={total === 0}>
             Export CSV

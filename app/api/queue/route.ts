@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { applyUrlSearch } from '@/lib/query-filter'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -48,6 +49,12 @@ export async function GET(req: NextRequest) {
 
     if (status) query = query.eq('status', status)
     if (siteId) query = query.eq('site_id', siteId)
+    // Advanced filters: URL search (wildcards/exclude) + created-at date range.
+    query = applyUrlSearch(query, 'url', searchParams.get('q'))
+    const from = searchParams.get('from')
+    const to = searchParams.get('to')
+    if (from) query = query.gte('created_at', from)
+    if (to) query = query.lte('created_at', to)
 
     const { data, count, error } = await query
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

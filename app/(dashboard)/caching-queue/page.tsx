@@ -60,6 +60,7 @@ export default function CachingQueuePage() {
   const [page, setPage] = useState(1)
   const [siteId, setSiteId] = useState<string | undefined>()
   const [statusFilter, setStatusFilter] = useState<Status | undefined>()
+  const [q, setQ] = useState('')
   const [addOpen, setAddOpen] = useState(false)
   const [addSite, setAddSite] = useState<string | undefined>()
   const [urlText, setUrlText] = useState('')
@@ -74,6 +75,7 @@ export default function CachingQueuePage() {
   const listParams = new URLSearchParams({ page: String(page), limit: String(LIMIT) })
   if (siteId) listParams.set('site_id', siteId)
   if (statusFilter) listParams.set('status', statusFilter)
+  if (q) listParams.set('q', q)
   const sumParams = new URLSearchParams({ summary: 'true' })
   if (siteId) sumParams.set('site_id', siteId)
 
@@ -284,6 +286,13 @@ export default function CachingQueuePage() {
               <Button icon={<ClearOutlined />}>Clear completed</Button>
             </Popconfirm>
           )}
+          <Input.Search
+            allowClear
+            placeholder="Filter URLs (use * and -exclude)"
+            defaultValue={q}
+            onSearch={(v) => { setQ(v.trim()); setPage(1) }}
+            style={{ width: 220 }}
+          />
           <Button icon={<ExportOutlined />} loading={exporting} onClick={exportCsv} disabled={total === 0}>
             Export CSV
           </Button>
