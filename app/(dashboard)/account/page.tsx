@@ -34,6 +34,8 @@ export default function AccountPage() {
   const [savingCompany, setSavingCompany] = useState(false)
   const [savingUser, setSavingUser] = useState(false)
   const [sendingReset, setSendingReset] = useState(false)
+  const [newEmail, setNewEmail] = useState('')
+  const [changingEmail, setChangingEmail] = useState(false)
 
   // Profile via SWR — cached, so revisiting the page hydrates the forms instantly.
   const { data, isLoading: loading, error } = useSWR<{ user: Profile }>('/api/auth/me')
@@ -99,6 +101,36 @@ export default function AccountPage() {
       ok ? message.success('User details saved') : message.error('Save failed')
     } finally {
       setSavingUser(false)
+    }
+  }
+
+  async function changeEmail() {
+    const next = newEmail.trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next)) {
+      message.error('Enter a valid email address')
+      return
+    }
+    if (next === email.toLowerCase()) {
+      message.info('That is already your email address')
+      return
+    }
+    setChangingEmail(true)
+    try {
+      const supabase = getSupabaseBrowser()
+      // Supabase emails a confirmation link to the NEW address; the change only
+      // takes effect once they click it. /api/auth/me self-heals the profile
+      // email afterwards (it syncs from the verified auth user).
+      const { error } = await supabase.auth.updateUser({ email: next })
+      if (error) {
+        message.error(error.message)
+        return
+      }
+      message.success(`Confirmation link sent to ${next}. Click it to finish changing your email.`)
+      setNewEmail('')
+    } catch {
+      message.error('Could not start the email change')
+    } finally {
+      setChangingEmail(false)
     }
   }
 
@@ -213,6 +245,31 @@ export default function AccountPage() {
           Save User Details
         </Button>
       </Form>
+
+      <Divider />
+
+      {/* ── Email Address ───────────────────────────────────────────────────── */}
+      <Title level={4}>Email Address</Title>
+      <Text type="secondary">
+        Your sign-in email is <Text strong>{email || '—'}</Text>. To change it, enter a new address —
+        we&apos;ll email a confirmation link there, and the change takes effect once you click it.
+      </Text>
+      <Row gutter={8} style={{ marginTop: 16, maxWidth: 460 }}>
+        <Col flex="auto">
+          <Input
+            type="email"
+            placeholder="new@example.com"
+            value={newEmail}
+            onChange={(e) => setNewEmail(e.target.value)}
+            onPressEnter={changeEmail}
+          />
+        </Col>
+        <Col>
+          <Button loading={changingEmail} onClick={changeEmail}>
+            Change Email
+          </Button>
+        </Col>
+      </Row>
 
       <Divider />
 

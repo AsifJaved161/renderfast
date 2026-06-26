@@ -25,6 +25,13 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
+    // Self-heal: if the verified auth email differs from the profile (e.g. the
+    // user just confirmed an email change), sync it onto public.users.
+    if (profile && user.email && profile.email !== user.email) {
+      await supabaseAdmin.from('users').update({ email: user.email }).eq('id', user.id)
+      profile.email = user.email
+    }
+
     return NextResponse.json({ user: profile })
   } catch (error) {
     console.error('[AUTH_ME_GET]:', error)
