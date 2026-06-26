@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { Button, Input, Select, Steps } from 'antd'
-import { Plus, X } from 'lucide-react'
+import { PlusOutlined, CloseOutlined } from '@ant-design/icons'
 import { useRouter } from 'next/navigation'
 
 // ─── Wizard steps (same across all wizard pages) ──────────────────────────────
@@ -211,7 +211,7 @@ export default function InviteTeamPage() {
                   (e.currentTarget.style.color = '#9ca3af')
                 }
               >
-                <X size={16} />
+                <CloseOutlined style={{ fontSize: 16 }} />
               </button>
             </div>
           ))}
@@ -236,7 +236,7 @@ export default function InviteTeamPage() {
             fontFamily: 'inherit',
           }}
         >
-          <Plus size={15} />
+          <PlusOutlined style={{ fontSize: 15 }} />
           Add Another
         </button>
 

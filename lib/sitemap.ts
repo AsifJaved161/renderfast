@@ -1,5 +1,4 @@
-import axios from 'axios'
-import { parseStringPromise } from 'xml2js'
+import { XMLParser } from 'fast-xml-parser'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getOpsConfig } from '@/lib/app-config'
 import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
@@ -7,6 +6,16 @@ import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
 // Keep batches sane for free-tier DBs / function timeouts.
 const MAX_CHILD_SITEMAPS = 20
 const UA = 'RenderForAIBot/1.0 (+https://renderforai.com)'
+
+// <url>/<sitemap> are forced to arrays so single-entry sitemaps parse the same
+// as multi-entry ones; parseTagValue:false keeps <loc>/<lastmod> as raw strings
+// (no numeric coercion), matching the previous xml2js behaviour.
+const xmlParser = new XMLParser({
+  ignoreAttributes: true,
+  parseTagValue: false,
+  trimValues: true,
+  isArray: (name) => name === 'url' || name === 'sitemap',
+})
 
 export interface SitemapResult {
   sitemapUrl: string | null
@@ -20,28 +29,31 @@ interface SitemapPage {
 }
 
 // Pull <loc> (+ <lastmod>) out of a urlset (pages) or sitemapindex (children).
+// fast-xml-parser yields <loc>/<lastmod> as strings directly (the `url`/`sitemap`
+// wrappers are forced to arrays via the parser config above).
 function extractLocs(parsed: any): { pages: SitemapPage[]; sitemaps: string[] } {
   const pages: SitemapPage[] = []
   const sitemaps: string[] = []
-  if (parsed?.urlset?.url) {
-    for (const u of parsed.urlset.url) {
-      if (u?.loc?.[0]) pages.push({ loc: String(u.loc[0]).trim(), lastmod: u?.lastmod?.[0] ? String(u.lastmod[0]).trim() : null })
+  const urls = parsed?.urlset?.url
+  if (Array.isArray(urls)) {
+    for (const u of urls) {
+      if (u?.loc) pages.push({ loc: String(u.loc).trim(), lastmod: u?.lastmod != null ? String(u.lastmod).trim() : null })
     }
   }
-  if (parsed?.sitemapindex?.sitemap) {
-    for (const s of parsed.sitemapindex.sitemap) if (s?.loc?.[0]) sitemaps.push(String(s.loc[0]).trim())
+  const childMaps = parsed?.sitemapindex?.sitemap
+  if (Array.isArray(childMaps)) {
+    for (const s of childMaps) if (s?.loc) sitemaps.push(String(s.loc).trim())
   }
   return { pages, sitemaps }
 }
 
 async function fetchXml(url: string) {
-  const res = await axios.get(url, {
-    timeout: 15000,
+  const res = await fetch(url, {
     headers: { 'User-Agent': UA, Accept: 'application/xml,text/xml,*/*' },
-    maxContentLength: 12 * 1024 * 1024,
-    responseType: 'text',
+    signal: AbortSignal.timeout(15000),
   })
-  return parseStringPromise(res.data)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return xmlParser.parse(await res.text())
 }
 
 // Find candidate sitemap URLs: robots.txt "Sitemap:" lines, else common defaults.
@@ -49,14 +61,15 @@ async function discoverSitemapUrls(domain: string): Promise<string[]> {
   const base = `https://${domain}`
   const found: string[] = []
   try {
-    const r = await axios.get(`${base}/robots.txt`, {
-      timeout: 10000,
+    const r = await fetch(`${base}/robots.txt`, {
       headers: { 'User-Agent': UA },
-      responseType: 'text',
+      signal: AbortSignal.timeout(10000),
     })
-    for (const line of String(r.data).split(/\r?\n/)) {
-      const m = line.match(/^\s*sitemap:\s*(\S+)/i)
-      if (m) found.push(m[1].trim())
+    if (r.ok) {
+      for (const line of (await r.text()).split(/\r?\n/)) {
+        const m = line.match(/^\s*sitemap:\s*(\S+)/i)
+        if (m) found.push(m[1].trim())
+      }
     }
   } catch {
     // robots.txt missing/blocked — fall back to defaults below

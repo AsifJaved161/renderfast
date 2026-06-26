@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import axios from 'axios'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
@@ -15,25 +14,31 @@ function userId(req: NextRequest) {
 }
 
 // Resolve a URL's live HTTP status. HEAD first; fall back to GET for servers
-// that block HEAD. Returns 0 on a network/DNS error.
+// that block HEAD. Returns 0 on a network/DNS error. Native fetch (no axios):
+// follows redirects to the final status, bounded by a 12s timeout.
 async function checkStatus(url: string): Promise<number> {
-  const cfg = {
-    timeout: 12000,
-    validateStatus: () => true as const,
-    maxRedirects: 3,
-    headers: { 'User-Agent': UA },
+  const probe = async (method: 'HEAD' | 'GET'): Promise<number> => {
+    const res = await fetch(url, {
+      method,
+      headers: { 'User-Agent': UA },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(12000),
+    })
+    // Only the status is needed — release the body so the socket is freed/reused.
+    try {
+      await res.body?.cancel()
+    } catch {
+      /* ignore */
+    }
+    return res.status
   }
   try {
-    const head = await axios.head(url, cfg)
-    if ([403, 405, 501].includes(head.status)) {
-      const get = await axios.get(url, { ...cfg, responseType: 'text', maxContentLength: 2 * 1024 * 1024 })
-      return get.status
-    }
-    return head.status
+    const status = await probe('HEAD')
+    if ([403, 405, 501].includes(status)) return await probe('GET')
+    return status
   } catch {
     try {
-      const get = await axios.get(url, { ...cfg, responseType: 'text', maxContentLength: 2 * 1024 * 1024 })
-      return get.status
+      return await probe('GET')
     } catch {
       return 0
     }
