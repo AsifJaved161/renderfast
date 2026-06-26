@@ -29,6 +29,7 @@ import {
   ExportOutlined,
 } from '@ant-design/icons'
 import { StatTitle } from '@/components/ui/StatTitle'
+import { BarChart } from '@/components/charts/Charts'
 import { downloadCsv } from '@/lib/export-csv'
 import { useDashboard } from '@/lib/dashboard-context'
 
@@ -73,12 +74,19 @@ export default function CachePage() {
     total: number
   }>(`/api/cache?${listParams}`)
   const { data: sumData, mutate: mutateSummary } = useSWR<{
-    summary: { total: number; totalSizeBytes: number; avgTtlHours: number; hitRate: number }
+    summary: {
+      total: number
+      totalSizeBytes: number
+      avgTtlHours: number
+      hitRate: number
+      freshness?: { label: string; count: number }[]
+    }
   }>(`/api/cache?${sumParams}`)
 
   const rows = listData?.data ?? []
   const total = listData?.total ?? 0
-  const summary = sumData?.summary ?? { total: 0, totalSizeBytes: 0, avgTtlHours: 0, hitRate: 0 }
+  const summary = sumData?.summary ?? { total: 0, totalSizeBytes: 0, avgTtlHours: 0, hitRate: 0, freshness: [] }
+  const freshness = summary.freshness ?? []
 
   // Revalidate both the list and the summary after any mutation.
   const reload = () => Promise.all([mutateList(), mutateSummary()])
@@ -273,6 +281,16 @@ export default function CachePage() {
           </Card>
         </Col>
       </Row>
+
+      {/* ── Cache freshness distribution ────────────────────────────────────── */}
+      {freshness.some((f) => f.count > 0) && (
+        <Card
+          title={<StatTitle hint="How long ago your cached pages were last rendered. Older pages are re-checked for changes and refreshed automatically.">Cache Freshness</StatTitle>}
+          style={{ marginBottom: 20 }}
+        >
+          <BarChart data={freshness.map((f) => ({ label: f.label, value: f.count }))} unit="pages" height={200} />
+        </Card>
+      )}
 
       {/* ── Bulk actions bar ────────────────────────────────────────────────── */}
       {selected.length > 0 && (

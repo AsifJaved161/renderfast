@@ -67,14 +67,31 @@ export async function GET(req: NextRequest) {
     sizeQ = excludeJunk(sizeQ)
     const { data: rows } = await sizeQ
 
+    // Age buckets for the cache-freshness chart (how long ago each page was cached).
+    const FRESHNESS = [
+      { label: '< 1 day', max: 1 },
+      { label: '1–3 days', max: 3 },
+      { label: '3–7 days', max: 7 },
+      { label: '7–14 days', max: 14 },
+      { label: '14–30 days', max: 30 },
+      { label: '30+ days', max: Infinity },
+    ]
+    const freshness = FRESHNESS.map((b) => ({ label: b.label, count: 0 }))
+
     let totalSizeBytes = 0
     let ttlSum = 0
     let ttlCount = 0
+    const now = Date.now()
     for (const r of rows ?? []) {
       totalSizeBytes += r.html_size_bytes ?? 0
       if (r.expires_at && r.cached_at) {
         ttlSum += new Date(r.expires_at).getTime() - new Date(r.cached_at).getTime()
         ttlCount++
+      }
+      if (r.cached_at) {
+        const ageDays = (now - new Date(r.cached_at).getTime()) / 86400_000
+        const idx = FRESHNESS.findIndex((b) => ageDays < b.max)
+        if (idx >= 0) freshness[idx].count++
       }
     }
     const avgTtlHours = ttlCount ? ttlSum / ttlCount / 3_600_000 : 0
@@ -100,7 +117,7 @@ export async function GET(req: NextRequest) {
     const hitRate = totalRenders ? Math.round(((hits ?? 0) / totalRenders) * 100) : 0
 
     return NextResponse.json({
-      summary: { total: count ?? 0, totalSizeBytes, avgTtlHours, hitRate },
+      summary: { total: count ?? 0, totalSizeBytes, avgTtlHours, hitRate, freshness },
     })
   }
 
