@@ -131,10 +131,12 @@ export function BarChart({
   data,
   height = 220,
   colors = CHART_PALETTE,
+  unit,
 }: {
   data: { label: string; value: number }[]
   height?: number
   colors?: string[]
+  unit?: string // appended to the hover tooltip, e.g. "renders" → "06-23: 24 renders"
 }) {
   const max = Math.max(...data.map((d) => d.value), 1)
   return (
@@ -152,7 +154,7 @@ export function BarChart({
                 {d.value.toLocaleString()}
               </span>
               <div
-                title={`${d.label}: ${d.value.toLocaleString()}`}
+                title={`${d.label}: ${d.value.toLocaleString()}${unit ? ` ${unit}` : ''}`}
                 style={{
                   width: '68%',
                   maxWidth: 34,

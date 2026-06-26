@@ -219,10 +219,12 @@ export default function DashboardPage() {
         ) : (
           <Row align="middle" gutter={24}>
             <Col flex="auto">
-              <Text strong style={{ fontSize: 16 }}>
-                {d.usageStats.renderCount.toLocaleString()} of{' '}
-                {d.usageStats.renderLimit.toLocaleString()} renders used this month
-              </Text>
+              <StatTitle hint="Your plan includes a monthly render allowance. Each fresh prerender of a page counts as one render (cache hits don't). This resets every month.">
+                <Text strong style={{ fontSize: 16 }}>
+                  {d.usageStats.renderCount.toLocaleString()} of{' '}
+                  {d.usageStats.renderLimit.toLocaleString()} renders used this month
+                </Text>
+              </StatTitle>
               <Tag color={BRAND} style={{ marginLeft: 8, textTransform: 'capitalize' }}>
                 {plan} plan
               </Tag>
@@ -288,7 +290,7 @@ export default function DashboardPage() {
       {/* ── Charts row ──────────────────────────────────────────────────────── */}
       <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
         <Col xs={24} lg={12}>
-          <Card title="Bot Activity">
+          <Card title={<StatTitle hint="How many times each crawler (Googlebot, GPTBot, Bingbot & others) hit your site per day. Tap a coloured tile to show/hide that line.">Bot Activity</StatTitle>}>
             {loading ? (
               <Skeleton active />
             ) : (
@@ -305,7 +307,7 @@ export default function DashboardPage() {
           </Card>
         </Col>
         <Col xs={24} lg={6}>
-          <Card title="AI vs Search">
+          <Card title={<StatTitle hint="Split of bot traffic by type — AI crawlers (GPTBot, ClaudeBot…) vs search engines (Google, Bing…) vs social link-preview bots.">AI vs Search</StatTitle>}>
             {loading ? (
               <Skeleton active />
             ) : (
@@ -332,7 +334,7 @@ export default function DashboardPage() {
         </Col>
         <Col xs={24} lg={6}>
           <Card
-            title="Renders Trend"
+            title={<StatTitle hint="Pages rendered over time (each bar = a day; auto-grouped into weeks/months for long ranges). Hover a bar to see that period's render count.">Renders Trend</StatTitle>}
             extra={
               !loading && d.renderTrend.length > 31 ? (
                 <Text type="secondary" style={{ fontSize: 12 }}>{renderTrendChart.granularity}</Text>
@@ -342,14 +344,14 @@ export default function DashboardPage() {
             {loading ? (
               <Skeleton active />
             ) : (
-              <BarChart data={renderTrendChart.data} />
+              <BarChart data={renderTrendChart.data} unit="renders" />
             )}
           </Card>
         </Col>
       </Row>
 
       {/* ── Top pages table ─────────────────────────────────────────────────── */}
-      <Card title="Top Pages">
+      <Card title={<StatTitle hint="Your most-crawled pages — total bot hits, how many distinct bots visited, whether the latest hit was served from cache, and when it was last crawled.">Top Pages</StatTitle>}>
         <Table
           loading={loading}
           rowKey="url"
