@@ -129,12 +129,14 @@ page/render; "crawler" = our render queue; "pendings" = our caching queue.)
 6. ✅ **Per-site usage breakdown** — `/api/billing/usage-by-site` + "Renders by Site" table.
 > Phase 1 needs NO database migration — safe to deploy as-is.
 
-### Phase 2 — SEO Reports suite (highest SEO value)
-7. **Duplicate titles** + **Duplicate contents** reports.
-8. **Low word-count** pages report.
-9. **Missing hreflang** report.
-10. **Page explorer** (per-path: status, title, canonical, inner links, referrers) + **site-structure totals**.
-> These need the renderer to persist page title / canonical / inner-links / word-count / content-hash per render (a diagnostics extension + migration).
+### Phase 2 — SEO Reports suite (highest SEO value)  ✅ DONE
+7. ✅ **Duplicate titles** + **Duplicate contents** (content-hash; canonicalised pages excluded).
+8. ✅ **Low word-count** pages report.
+9. ✅ **Missing hreflang** confirmation-link report.
+10. ✅ **Page explorer** (status, title, canonical, inner links, referrers) + **site-structure totals**.
+11. ✅ Bonus: **JavaScript errors** per page.
+> Built on migration 020 + diagnostics metadata capture. New /seo-reports page +
+> /api/seo-reports/[siteId]. **Run migration 020 in Supabase before deploy.**
 
 ### Phase 3 — Status views & dashboard depth
 11. **Errors view** with typed error reasons.
