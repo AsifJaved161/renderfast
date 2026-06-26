@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import useSWR from 'swr'
 import {
   Row,
@@ -41,15 +41,34 @@ const PLANS: PlanDef[] = [
   { key: 'agency', name: 'Agency', price: '$79', renders: '1M renders', sites: 'Unlimited sites', support: 'Dedicated support' },
 ]
 
-const INVOICES = [
-  { id: 'INV-1004', date: '2026-06-01', amount: '$29.00', status: 'Paid' },
-  { id: 'INV-1003', date: '2026-05-01', amount: '$29.00', status: 'Paid' },
-  { id: 'INV-1002', date: '2026-04-01', amount: '$29.00', status: 'Paid' },
-  { id: 'INV-1001', date: '2026-03-01', amount: '$9.00', status: 'Paid' },
-]
+interface Invoice {
+  id: string
+  date: string | null
+  amount: number
+  currency: string
+  status: string
+  url: string | null
+}
+interface InvoiceData {
+  invoices: Invoice[]
+  upcoming: { amount: number; currency: string; date: string | null } | null
+}
+
+const STATUS_COLOR: Record<string, string> = {
+  paid: 'green',
+  open: 'blue',
+  draft: 'default',
+  void: 'default',
+  uncollectible: 'red',
+}
+
+const money = (amount: number, currency: string) =>
+  amount.toLocaleString(undefined, { style: 'currency', currency })
 
 export default function BillingPage() {
   const [busy, setBusy] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
 
   // Plan + usage via SWR (both cached, instant on revisit).
   const { data: me, isLoading: loadingMe } = useSWR<{ user?: { plan?: PlanKey } }>('/api/auth/me')
@@ -57,6 +76,10 @@ export default function BillingPage() {
     usageStats?: { renderCount: number; renderLimit: number; percentUsed: number; resetAt: string }
     renderTrend?: { date: string; renders: number }[]
   }>('/api/analytics')
+  // Real invoices from Stripe (cached).
+  const { data: invoiceData, isLoading: loadingInvoices } = useSWR<InvoiceData>('/api/billing/invoices')
+  const invoices = invoiceData?.invoices ?? []
+  const upcoming = invoiceData?.upcoming ?? null
 
   const loading = loadingMe || loadingAnalytics
   const plan: PlanKey = me?.user?.plan ?? 'free'
@@ -224,27 +247,54 @@ export default function BillingPage() {
       </Card>
 
       {/* ── Invoice history ─────────────────────────────────────────────────── */}
-      <Card title="Invoice History">
-        <Table
+      <Card
+        title="Invoice History"
+        extra={
+          upcoming ? (
+            <Text type="secondary">
+              Next: {money(upcoming.amount, upcoming.currency)}
+              {upcoming.date && mounted ? ` on ${new Date(upcoming.date).toLocaleDateString()}` : ''}
+            </Text>
+          ) : undefined
+        }
+      >
+        <Table<Invoice>
           rowKey="id"
+          loading={loadingInvoices}
           pagination={false}
-          dataSource={INVOICES}
+          dataSource={invoices}
+          locale={{ emptyText: 'No invoices yet — they appear here after your first paid charge.' }}
           columns={[
             { title: 'Invoice #', dataIndex: 'id' },
-            { title: 'Date', dataIndex: 'date' },
-            { title: 'Amount', dataIndex: 'amount' },
+            {
+              title: 'Date',
+              dataIndex: 'date',
+              render: (v: string | null) => (v && mounted ? new Date(v).toLocaleDateString() : '—'),
+            },
+            {
+              title: 'Amount',
+              dataIndex: 'amount',
+              render: (v: number, r) => money(v, r.currency),
+            },
             {
               title: 'Status',
               dataIndex: 'status',
-              render: (s: string) => <Tag color="green">{s}</Tag>,
+              render: (s: string) => (
+                <Tag color={STATUS_COLOR[s] ?? 'default'} style={{ textTransform: 'capitalize' }}>
+                  {s}
+                </Tag>
+              ),
             },
             {
               title: 'Invoice',
-              render: () => (
-                <a href="#" onClick={(e) => e.preventDefault()}>
-                  Download PDF
-                </a>
-              ),
+              render: (_, r) =>
+                r.url ? (
+                  <a href={r.url} target="_blank" rel="noopener noreferrer">
+                    View / Download
+                  </a>
+                ) : (
+                  <Text type="secondary">—</Text>
+                ),
             },
           ]}
         />
