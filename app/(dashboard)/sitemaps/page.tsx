@@ -21,6 +21,7 @@ import {
   ThunderboltOutlined,
   GlobalOutlined,
   SyncOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons'
 import { useDashboard } from '@/lib/dashboard-context'
 
@@ -196,6 +197,18 @@ export default function SitemapsPage() {
     }
   }
 
+  // Download the generated sitemap.xml. A same-origin GET sends the auth cookie;
+  // the route replies with a Content-Disposition attachment so it downloads.
+  function downloadSitemap() {
+    if (!siteId) return
+    const a = document.createElement('a')
+    a.href = `/api/sitemaps/download?site_id=${siteId}`
+    a.download = ''
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  }
+
   const chip = (label: string, value: number, color: string) => (
     <Tag color={color} style={{ fontSize: 13, padding: '2px 10px' }}>
       {label}: <strong>{value}</strong>
@@ -219,6 +232,11 @@ export default function SitemapsPage() {
           <Button icon={<ReloadOutlined />} loading={fetching} onClick={fetchSitemap} disabled={!siteId}>
             Fetch sitemap
           </Button>
+          <Tooltip title="Download a sitemap.xml built from this site's rendered pages">
+            <Button icon={<DownloadOutlined />} onClick={downloadSitemap} disabled={!siteId || counts.completed === 0}>
+              Download sitemap
+            </Button>
+          </Tooltip>
           <Button
             type="primary"
             icon={<ThunderboltOutlined />}
