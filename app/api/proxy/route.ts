@@ -26,6 +26,7 @@ interface Owner {
   userId: string
   renderCount: number
   renderLimit: number
+  status: string // 'active' | 'pending' | 'inactive' — 'inactive' = prerendering paused
 }
 
 // Short-lived in-memory cache for owner lookups. The proxy hot path resolves the
@@ -56,7 +57,7 @@ async function resolveOwnerFromDb(domain: string, token: string | null): Promise
 
   const { data: sites } = await supabaseAdmin
     .from('sites')
-    .select('id, user_id, render_count')
+    .select('id, user_id, render_count, status')
     .in('domain', candidates)
   if (!sites || sites.length === 0) return null
 
@@ -82,6 +83,7 @@ async function resolveOwnerFromDb(domain: string, token: string | null): Promise
     userId: site.user_id,
     renderCount: user?.render_count ?? 0,
     renderLimit: user?.render_limit ?? 0,
+    status: site.status ?? 'active',
   }
 }
 
@@ -156,6 +158,12 @@ export async function GET(req: NextRequest) {
 
   // Unregistered domain → don't render foreign sites; send the bot to origin.
   if (!owner) {
+    return NextResponse.redirect(targetUrl, 302)
+  }
+
+  // Prerendering paused for this site (crawler off) → serve nothing from us; the
+  // bot just gets the origin page. No render, no cache serve, no quota spend.
+  if (owner.status === 'inactive') {
     return NextResponse.redirect(targetUrl, 302)
   }
 

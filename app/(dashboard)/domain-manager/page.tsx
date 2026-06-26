@@ -12,6 +12,7 @@ import {
   Form,
   Input,
   Badge,
+  Switch,
   Tooltip,
   Skeleton,
   Typography,
@@ -116,6 +117,27 @@ export default function DomainManagerPage() {
   const atLimit = limit !== null && sites.length >= limit
   const open = (id: string) => router.push(`/domain-manager/${id}`)
 
+  // Quick pause/resume of prerendering for a site (active ⇄ inactive). When
+  // paused, the proxy stops serving prerendered content for this domain.
+  async function toggleStatus(site: Site) {
+    const next = site.status === 'inactive' ? 'active' : 'inactive'
+    try {
+      const res = await fetch(`/api/sites/${site.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next }),
+      })
+      if (!res.ok) {
+        message.error('Could not update prerendering')
+        return
+      }
+      message.success(next === 'active' ? 'Prerendering resumed' : 'Prerendering paused')
+      await mutate()
+    } catch {
+      message.error('Network error')
+    }
+  }
+
   function tryAdd() {
     if (atLimit) {
       message.warning(
@@ -176,7 +198,7 @@ export default function DomainManagerPage() {
         <Row gutter={[20, 20]}>
           {sites.map((site) => (
             <Col xs={24} sm={12} lg={8} key={site.id}>
-              <SiteCard site={site} onOpen={() => open(site.id)} />
+              <SiteCard site={site} onOpen={() => open(site.id)} onToggle={() => toggleStatus(site)} />
             </Col>
           ))}
           <Col xs={24} sm={12} lg={8}>
@@ -205,6 +227,16 @@ export default function DomainManagerPage() {
                 <div style={{ fontSize: 13, color: '#6b7280' }}>{site.domain}</div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <Tooltip title={site.status === 'inactive' ? 'Prerendering paused — click to resume' : 'Prerendering active — click to pause'}>
+                  <span onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex' }}>
+                    <Switch
+                      size="small"
+                      checked={site.status !== 'inactive'}
+                      onChange={() => toggleStatus(site)}
+                      style={site.status !== 'inactive' ? { background: BRAND } : undefined}
+                    />
+                  </span>
+                </Tooltip>
                 <Badge status={STATUS_BADGE[site.status]} text={site.status} />
                 <CaretRightFilled style={{ color: BRAND, fontSize: 18 }} />
               </div>
@@ -295,7 +327,7 @@ function Stat({
   )
 }
 
-function SiteCard({ site, onOpen }: { site: Site; onOpen: () => void }) {
+function SiteCard({ site, onOpen, onToggle }: { site: Site; onOpen: () => void; onToggle: () => void }) {
   const s = site.stats
   return (
     <Card
@@ -314,9 +346,21 @@ function SiteCard({ site, onOpen }: { site: Site; onOpen: () => void }) {
             <Badge status={STATUS_BADGE[site.status]} text={site.status} />
           </div>
         </div>
-        <Tooltip title="Open details">
-          <CaretRightFilled style={{ color: BRAND, fontSize: 24 }} />
-        </Tooltip>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Tooltip title={site.status === 'inactive' ? 'Prerendering paused — click to resume' : 'Prerendering active — click to pause'}>
+            <span onClick={(e) => e.stopPropagation()} style={{ display: 'inline-flex' }}>
+              <Switch
+                size="small"
+                checked={site.status !== 'inactive'}
+                onChange={onToggle}
+                style={site.status !== 'inactive' ? { background: BRAND } : undefined}
+              />
+            </span>
+          </Tooltip>
+          <Tooltip title="Open details">
+            <CaretRightFilled style={{ color: BRAND, fontSize: 24 }} />
+          </Tooltip>
+        </div>
       </div>
 
       {/* ── Insights ────────────────────────────────────────────────────────── */}
