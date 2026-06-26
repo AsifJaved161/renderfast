@@ -21,7 +21,16 @@ export async function isRenderConfigured(): Promise<boolean> {
   return configured(await getCloudflareConfig())
 }
 
-export async function renderPage(url: string, isMobile = false): Promise<RenderResult> {
+// Per-render overrides (from per-site advanced settings). All optional.
+export interface RenderOptions {
+  isMobile?: boolean
+  userAgent?: string
+  headers?: Record<string, string>
+  blockUrlPatterns?: string[] // URL fragments/regex to block while rendering
+}
+
+export async function renderPage(url: string, opts: RenderOptions = {}): Promise<RenderResult> {
+  const isMobile = !!opts.isMobile
   const cf = await getCloudflareConfig()
 
   // ── Dev fallback (Cloudflare not configured) ─────────────────────────────────
@@ -67,6 +76,13 @@ export async function renderPage(url: string, isMobile = false): Promise<RenderR
         // Skip downloading images/fonts/media → faster, cheaper renders. Admin
         // can disable if a site needs them (e.g. lazy-load depends on images).
         ...(blockResources ? { rejectResourceTypes: ['image', 'font', 'media'] } : {}),
+        // Per-site overrides: custom UA, extra headers, and blocked URL patterns
+        // (e.g. ad/analytics scripts) — passed through to the Cloudflare renderer.
+        ...(opts.userAgent ? { userAgent: opts.userAgent } : {}),
+        ...(opts.headers && Object.keys(opts.headers).length ? { setExtraHTTPHeaders: opts.headers } : {}),
+        ...(opts.blockUrlPatterns && opts.blockUrlPatterns.length
+          ? { rejectRequestPattern: opts.blockUrlPatterns }
+          : {}),
         viewport: isMobile
           ? { width: 390, height: 844, isMobile: true }
           : { width: 1280, height: 800 },

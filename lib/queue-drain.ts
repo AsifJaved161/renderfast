@@ -11,6 +11,7 @@ import { getOpsConfig } from '@/lib/app-config'
 import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
 import { captureValidators } from '@/lib/revalidate'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getSiteSettings, toRenderOptions, isExcludedPath, pathExpiryDays } from '@/lib/site-settings'
 
 const BATCH = 5
 
@@ -62,6 +63,13 @@ export async function drainQueue(
         continue
       }
 
+      // Per-site advanced settings (render overrides, excluded paths, expiry).
+      const settings = await getSiteSettings(item.site_id)
+      if (isExcludedPath(item.url, settings.excludedPaths)) {
+        await supabaseAdmin.from('caching_queue').delete().eq('id', item.id)
+        continue
+      }
+
       // Normalize away tracking params so the cache key matches the proxy's.
       const renderUrl = normalizeUrl(item.url)
       let domain = ''
@@ -94,7 +102,7 @@ export async function drainQueue(
       // Claim the item so parallel drainers don't double-render it.
       await supabaseAdmin.from('caching_queue').update({ status: 'rendering' }).eq('id', item.id)
 
-      const result = parsed ? await renderPage(renderUrl) : null
+      const result = parsed ? await renderPage(renderUrl, toRenderOptions(settings)) : null
 
       // Rate-limited → transient: put it back to 'pending' and stop this run so
       // the cron / next call retries later instead of burning the whole queue.
@@ -118,6 +126,10 @@ export async function drainQueue(
         continue
       }
 
+      // Per-path cache-expiry override (soft check window), else platform default.
+      const expiryDays = pathExpiryDays(renderUrl, settings.pathExpiry)
+      const softTtlSeconds = expiryDays != null ? expiryDays * 86400 : cacheTtlSeconds
+
       // KV persists for the hard TTL; freshness is driven by change-detection.
       await setCachedPage(domain, renderUrl, result.html, hardTtlSeconds)
       const v = await captureValidators(renderUrl)
@@ -131,8 +143,8 @@ export async function drainQueue(
           html_size_bytes: Buffer.byteLength(result.html, 'utf8'),
           render_time_ms: result.renderTimeMs,
           cached_at: new Date().toISOString(),
-          expires_at: new Date(Date.now() + cacheTtlSeconds * 1000).toISOString(),
-          is_mobile: false,
+          expires_at: new Date(Date.now() + softTtlSeconds * 1000).toISOString(),
+          is_mobile: settings.emulateMobile,
           ...(v ?? {}),
         },
         { onConflict: 'url_hash' }

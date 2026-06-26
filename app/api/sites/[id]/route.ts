@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { clearDomainCache } from '@/lib/kv'
+import { normalizeSiteSettings, clearSiteSettingsCache } from '@/lib/site-settings'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -64,6 +65,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     }
     updates.status = body.status
   }
+  if ('settings' in body) {
+    // Validate + clamp the per-site advanced settings before storing.
+    updates.settings = normalizeSiteSettings(body.settings)
+  }
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
@@ -81,6 +86,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (error || !data) {
     return NextResponse.json({ error: 'Site not found' }, { status: 404 })
   }
+  clearSiteSettingsCache(id) // so the new settings apply immediately
   return NextResponse.json({ site: data })
 }
 

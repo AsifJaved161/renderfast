@@ -2,6 +2,7 @@ import { XMLParser } from 'fast-xml-parser'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getOpsConfig } from '@/lib/app-config'
 import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
+import { getSiteSettings } from '@/lib/site-settings'
 
 // Keep batches sane for free-tier DBs / function timeouts.
 const MAX_CHILD_SITEMAPS = 20
@@ -176,6 +177,20 @@ export async function discoverAndQueueSitemap(
   const { sitemapMaxUrls: MAX_URLS } = await getOpsConfig()
   const { urls, sitemapUrl } = await crawlSitemap(domain, MAX_URLS)
   const urlList = [...urls.keys()]
+
+  // Add the site's configured entry points (extra seeds — pages not reachable
+  // via the sitemap, or that should always be crawled).
+  const settings = await getSiteSettings(siteId)
+  for (const ep of settings.entryPoints) {
+    try {
+      const abs = /^https?:\/\//i.test(ep) ? ep : `https://${domain}${ep.startsWith('/') ? '' : '/'}${ep}`
+      const norm = normalizeUrl(abs)
+      if (isRenderableUrl(norm) && !urlList.includes(norm)) urlList.push(norm)
+    } catch {
+      /* skip malformed entry point */
+    }
+  }
+
   const ok = urlList.length > 0
 
   const { data: existing } = await supabaseAdmin

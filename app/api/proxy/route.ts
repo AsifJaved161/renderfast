@@ -8,6 +8,7 @@ import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
 import { captureValidators, originChanged, fingerprint } from '@/lib/revalidate'
 import { getServableLlmsTxt } from '@/lib/llms-txt'
 import { supabaseAdmin } from '@/lib/supabase'
+import { getSiteSettings, toRenderOptions, isExcludedPath, pathExpiryDays } from '@/lib/site-settings'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -178,6 +179,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(targetUrl, 302)
   }
 
+  // Per-site advanced settings (excluded paths, custom UA/headers/mobile/block,
+  // per-path cache expiry). Cached briefly so this stays off the DB hot path.
+  const settings = await getSiteSettings(owner.siteId)
+  if (isExcludedPath(targetUrl, settings.excludedPaths)) {
+    return NextResponse.redirect(targetUrl, 302) // owner excluded this path from prerendering
+  }
+
   // Normalize away tracking params so /p and /p?utm=… share one cache entry.
   const renderUrl = normalizeUrl(targetUrl)
   const renderParsed = new URL(renderUrl)
@@ -199,15 +207,18 @@ export async function GET(req: NextRequest) {
     return serve(body, wantsMarkdown, 'HIT', 200)
   }
 
-  // ── Cache miss: render now ──────────────────────────────────────────────────
-  const { html, renderTimeMs, statusCode, error } = await renderPage(renderUrl)
+  // ── Cache miss: render now (with the site's render overrides) ────────────────
+  const { html, renderTimeMs, statusCode, error } = await renderPage(renderUrl, toRenderOptions(settings))
   if (error || !html) {
     return NextResponse.redirect(targetUrl, 302)
   }
 
   const { cacheTtlSeconds, hardCacheTtlDays } = await getOpsConfig()
+  // Per-path cache-expiry override (soft check window), else the platform default.
+  const expiryDays = pathExpiryDays(renderUrl, settings.pathExpiry)
+  const ttlSeconds = expiryDays != null ? expiryDays * 86400 : cacheTtlSeconds
   await setCachedPage(domain, renderUrl, html, hardCacheTtlDays * 86400) // persist; freshness via revalidation
-  await persistRender(owner, domain, renderParsed, html, renderTimeMs, statusCode, cacheTtlSeconds)
+  await persistRender(owner, domain, renderParsed, html, renderTimeMs, statusCode, ttlSeconds)
   const body = toBody(html, wantsMarkdown)
   logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, false, renderTimeMs, statusCode)
   logBotTraffic(owner.siteId, bot.botName, Buffer.byteLength(body, 'utf8'))

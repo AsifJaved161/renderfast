@@ -30,6 +30,8 @@ import {
   ThunderboltOutlined,
   CalendarOutlined,
 } from '@ant-design/icons'
+import { SiteAdvancedSettings } from '@/components/dashboard/SiteAdvancedSettings'
+import type { SiteSettings } from '@/lib/site-settings'
 
 const BRAND = '#2da01d'
 const { Title, Text } = Typography
@@ -44,6 +46,7 @@ interface Site {
   integration_type: IntegrationType | null
   render_count: number
   created_at: string
+  settings?: Partial<SiteSettings> | null
 }
 
 const STATUS_BADGE: Record<Site['status'], 'success' | 'warning' | 'default'> = {
@@ -246,6 +249,9 @@ export default function SiteDetailPage() {
           </Button>
         </Form>
       </Card>
+
+      {/* ── Advanced settings ────────────────────────────────────────────────── */}
+      <SiteAdvancedSettings siteId={site.id} initial={site.settings} onSaved={() => mutate()} />
 
       {/* ── Danger zone ──────────────────────────────────────────────────────── */}
       <Card title="Danger Zone" style={{ marginTop: 20, borderColor: '#ffccc7' }}>

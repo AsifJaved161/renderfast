@@ -3,6 +3,7 @@ import { setCachedPage, deleteCachedPage, clearDomainCache } from '@/lib/kv'
 import { renderPage } from '@/lib/renderer'
 import { supabaseAdmin } from '@/lib/supabase'
 import { applyUrlSearch } from '@/lib/query-filter'
+import { getSiteSettings, toRenderOptions } from '@/lib/site-settings'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -168,7 +169,11 @@ export async function POST(req: NextRequest) {
   }
   const domain = parsed.hostname
 
-  const { html, renderTimeMs, statusCode, error } = await renderPage(url, !!is_mobile)
+  const settings = site_id ? await getSiteSettings(site_id) : null
+  const { html, renderTimeMs, statusCode, error } = await renderPage(url, {
+    ...(settings ? toRenderOptions(settings) : {}),
+    isMobile: !!is_mobile || !!settings?.emulateMobile,
+  })
   if (error || !html) {
     return NextResponse.json({ error: error ?? 'Render failed' }, { status: 502 })
   }
