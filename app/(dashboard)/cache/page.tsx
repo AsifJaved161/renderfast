@@ -26,8 +26,10 @@ import {
   HddOutlined,
   CheckCircleOutlined,
   FieldTimeOutlined,
+  ExportOutlined,
 } from '@ant-design/icons'
 import { StatTitle } from '@/components/ui/StatTitle'
+import { downloadCsv } from '@/lib/export-csv'
 import { useDashboard } from '@/lib/dashboard-context'
 
 const BRAND = '#2da01d'
@@ -56,6 +58,7 @@ export default function CachePage() {
   const [siteId, setSiteId] = useState<string | undefined>()
   const [selected, setSelected] = useState<React.Key[]>([])
   const [busy, setBusy] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [viewHtml, setViewHtml] = useState<{ url: string; html: string } | null>(null)
   const LIMIT = 20
 
@@ -155,6 +158,31 @@ export default function CachePage() {
     await reload()
   }
 
+  // Export the WHOLE cache for the current site filter (paginates through the API).
+  async function exportCsv() {
+    setExporting(true)
+    try {
+      const all: CacheEntry[] = []
+      for (let p = 1; p <= 500; p++) {
+        const params = new URLSearchParams({ page: String(p), limit: '100' })
+        if (siteId) params.set('site_id', siteId)
+        const res = await fetch(`/api/cache?${params}`)
+        if (!res.ok) break
+        const json = await res.json()
+        const batch: CacheEntry[] = json.data ?? []
+        all.push(...batch)
+        if (batch.length < 100) break
+      }
+      downloadCsv(
+        `cache-${Date.now()}.csv`,
+        ['URL', 'Status', 'Cached At', 'Expires At', 'Size (bytes)', 'Render time (ms)'],
+        all.map((r) => [r.url, r.status_code ?? '', r.cached_at, r.expires_at ?? '', r.html_size_bytes ?? '', r.render_time_ms ?? ''])
+      )
+    } finally {
+      setExporting(false)
+    }
+  }
+
   async function openHtml(url: string) {
     const hide = message.loading('Fetching HTML…', 0)
     try {
@@ -198,6 +226,9 @@ export default function CachePage() {
             }}
             options={sites.map((s) => ({ value: s.id, label: s.domain }))}
           />
+          <Button icon={<ExportOutlined />} loading={exporting} onClick={exportCsv} disabled={total === 0}>
+            Export CSV
+          </Button>
           <Button icon={<ReloadOutlined />} loading={busy} onClick={refreshAll}>
             Refresh All
           </Button>

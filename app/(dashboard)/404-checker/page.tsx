@@ -20,6 +20,7 @@ import {
 } from 'antd'
 import { ScanOutlined, LinkOutlined, ExportOutlined } from '@ant-design/icons'
 import { StatTitle } from '@/components/ui/StatTitle'
+import { downloadCsv } from '@/lib/export-csv'
 import { useDashboard } from '@/lib/dashboard-context'
 
 const BRAND = '#2da01d'
@@ -103,6 +104,20 @@ export default function BrokenLinkCheckerPage() {
     return true
   })
 
+  function exportCsv() {
+    downloadCsv(
+      `broken-links-${Date.now()}.csv`,
+      ['Broken URL', 'Status Code', 'Source Page', 'Detected At', 'Status'],
+      filtered.map((r) => [
+        r.url,
+        r.status_code ?? 'ERR',
+        r.source_url ?? '',
+        r.detected_at,
+        r.resolved ? 'Resolved' : 'Open',
+      ])
+    )
+  }
+
   return (
     <div style={{ padding: 24 }}>
       <div
@@ -127,6 +142,9 @@ export default function BrokenLinkCheckerPage() {
             onChange={setSiteId}
             options={sites.map((s) => ({ value: s.id, label: s.domain }))}
           />
+          <Button icon={<ExportOutlined />} onClick={exportCsv} disabled={filtered.length === 0}>
+            Export CSV
+          </Button>
           <Button
             type="primary"
             icon={<ScanOutlined />}

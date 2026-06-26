@@ -29,6 +29,7 @@ import {
   ExportOutlined,
 } from '@ant-design/icons'
 import { StatTitle } from '@/components/ui/StatTitle'
+import { downloadCsv } from '@/lib/export-csv'
 import { useDashboard } from '@/lib/dashboard-context'
 
 const BRAND = '#2da01d'
@@ -64,6 +65,7 @@ export default function CachingQueuePage() {
   const [urlText, setUrlText] = useState('')
   const [adding, setAdding] = useState(false)
   const [processing, setProcessing] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [pollMs, setPollMs] = useState(0)
   const LIMIT = 20
 
@@ -186,6 +188,32 @@ export default function CachingQueuePage() {
     }
   }
 
+  // Export the WHOLE queue for the current site/status filter (paginates the API).
+  async function exportCsv() {
+    setExporting(true)
+    try {
+      const all: QueueItem[] = []
+      for (let p = 1; p <= 500; p++) {
+        const params = new URLSearchParams({ page: String(p), limit: '100' })
+        if (siteId) params.set('site_id', siteId)
+        if (statusFilter) params.set('status', statusFilter)
+        const res = await fetch(`/api/queue?${params}`)
+        if (!res.ok) break
+        const json = await res.json()
+        const batch: QueueItem[] = json.data ?? []
+        all.push(...batch)
+        if (batch.length < 100) break
+      }
+      downloadCsv(
+        `caching-queue-${Date.now()}.csv`,
+        ['URL', 'Status', 'Priority', 'Attempts', 'Error'],
+        all.map((r) => [r.url, r.status, r.priority, r.attempts, r.error_message ?? ''])
+      )
+    } finally {
+      setExporting(false)
+    }
+  }
+
   async function clearCompleted() {
     const params = new URLSearchParams({ status: 'completed' })
     if (siteId) params.set('site_id', siteId)
@@ -256,6 +284,9 @@ export default function CachingQueuePage() {
               <Button icon={<ClearOutlined />}>Clear completed</Button>
             </Popconfirm>
           )}
+          <Button icon={<ExportOutlined />} loading={exporting} onClick={exportCsv} disabled={total === 0}>
+            Export CSV
+          </Button>
           <Button icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
             Add URLs
           </Button>
