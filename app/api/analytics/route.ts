@@ -22,6 +22,8 @@ interface AnalyticsOverview {
   botTypeSplit: { search: number; ai: number; social: number; unknown: number }
   topPages: { url: string; hits: number; uniqueBots: number; lastCrawled: string; cacheHit: boolean }[]
   topCrawlers: { botName: string; requests: number; percentage: number }[]
+  statusSplit: { code: string; hits: number }[]
+  responseByStatus: { code: string; avgMs: number }[]
 }
 
 export async function GET(req: NextRequest) {
@@ -116,6 +118,8 @@ export async function GET(req: NextRequest) {
       topPages: o.topPages,
       renderHistory,
       renderTrend: o.renderTrend,
+      statusSplit: o.statusSplit ?? [],
+      responseByStatus: o.responseByStatus ?? [],
       usageStats,
     })
   } catch (error) {
@@ -157,6 +161,8 @@ function emptyResponse(usageStats: any) {
     topPages: [],
     renderHistory: [],
     renderTrend: days.map((date) => ({ date, renders: 0, cacheHits: 0 })),
+    statusSplit: [],
+    responseByStatus: [],
     usageStats,
   }
 }

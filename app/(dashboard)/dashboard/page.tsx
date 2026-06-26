@@ -37,6 +37,15 @@ const BRAND = '#2da01d'
 const { Title, Text } = Typography
 const { RangePicker } = DatePicker
 
+// HTTP status-class colours (shared by the two status charts).
+const STATUS_COLOR: Record<string, string> = {
+  '2xx': '#2da01d',
+  '3xx': '#1677ff',
+  '4xx': '#faad14',
+  '5xx': '#ff4d4f',
+  other: '#bfbfbf',
+}
+
 interface Analytics {
   summary: {
     totalBotRequests: number
@@ -51,6 +60,8 @@ interface Analytics {
   botTypeSplit: { search: number; ai: number; social: number; unknown: number }
   topPages: { url: string; hits: number; uniqueBots: number; lastCrawled: string; cacheHit: boolean }[]
   renderTrend: { date: string; renders: number; cacheHits: number }[]
+  statusSplit: { code: string; hits: number }[]
+  responseByStatus: { code: string; avgMs: number }[]
   usageStats: { renderCount: number; renderLimit: number; percentUsed: number; resetAt: string }
 }
 
@@ -70,6 +81,8 @@ const EMPTY: Analytics = {
   botTypeSplit: { search: 0, ai: 0, social: 0, unknown: 0 },
   topPages: [],
   renderTrend: [],
+  statusSplit: [],
+  responseByStatus: [],
   usageStats: {
     renderCount: 0,
     renderLimit: 0,
@@ -349,6 +362,37 @@ export default function DashboardPage() {
           </Card>
         </Col>
       </Row>
+
+      {/* ── HTTP status charts ──────────────────────────────────────────────── */}
+      {(d.statusSplit.length > 0 || loading) && (
+        <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+          <Col xs={24} lg={12}>
+            <Card title={<StatTitle hint="Breakdown of render responses by HTTP status class. Mostly 2xx is healthy; many 4xx/5xx means pages are failing for bots.">Hits by HTTP Status</StatTitle>}>
+              {loading ? (
+                <Skeleton active />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+                  <DonutChart data={d.statusSplit.map((s) => ({ label: s.code, value: s.hits, color: STATUS_COLOR[s.code] ?? '#bfbfbf' }))} />
+                  <Legend data={d.statusSplit.map((s) => ({ label: s.code, value: s.hits, color: STATUS_COLOR[s.code] ?? '#bfbfbf' }))} />
+                </div>
+              )}
+            </Card>
+          </Col>
+          <Col xs={24} lg={12}>
+            <Card title={<StatTitle hint="Mean render time per HTTP status class — spot slow error pages.">Response Time by Status</StatTitle>}>
+              {loading ? (
+                <Skeleton active />
+              ) : (
+                <BarChart
+                  data={d.responseByStatus.map((s) => ({ label: s.code, value: s.avgMs }))}
+                  unit="ms"
+                  colors={d.responseByStatus.map((s) => STATUS_COLOR[s.code] ?? '#bfbfbf')}
+                />
+              )}
+            </Card>
+          </Col>
+        </Row>
+      )}
 
       {/* ── Top pages table ─────────────────────────────────────────────────── */}
       <Card title={<StatTitle hint="Your most-crawled pages — total bot hits, how many distinct bots visited, whether the latest hit was served from cache, and when it was last crawled.">Top Pages</StatTitle>}>
