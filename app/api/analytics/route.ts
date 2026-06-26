@@ -6,190 +6,98 @@ export const dynamic = 'force-dynamic'
 
 const DAY = 86400_000
 
-function dayKey(iso: string) {
-  return iso.slice(0, 10) // YYYY-MM-DD
+// Shape returned by the get_analytics_overview SQL function (migration 019).
+interface AnalyticsOverview {
+  summary: {
+    totalBotRequests: number
+    totalRenders: number
+    uniqueUrls: number
+    cacheHitRate: number
+    avgResponseTime: number
+    avgCacheServeTime: number
+    avgRenderTime: number
+  }
+  renderTrend: { date: string; renders: number; cacheHits: number }[]
+  botTimeline: { date: string; googlebot: number; gptbot: number; bingbot: number; others: number }[]
+  botTypeSplit: { search: number; ai: number; social: number; unknown: number }
+  topPages: { url: string; hits: number; uniqueBots: number; lastCrawled: string; cacheHit: boolean }[]
+  topCrawlers: { botName: string; requests: number; percentage: number }[]
 }
 
 export async function GET(req: NextRequest) {
   try {
-  const uid = req.headers.get('x-user-id')
-  if (!uid) return NextResponse.json({ error: 'x-user-id required' }, { status: 401 })
+    const uid = req.headers.get('x-user-id')
+    if (!uid) return NextResponse.json({ error: 'x-user-id required' }, { status: 401 })
 
-  const { searchParams } = req.nextUrl
-  const siteId = searchParams.get('site_id')
-  const botType = searchParams.get('bot_type')
-  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
-  const limit = Math.min(200, parseInt(searchParams.get('limit') ?? '50', 10))
-  const endDate = searchParams.get('end_date') ?? new Date().toISOString()
-  const startDate =
-    searchParams.get('start_date') ?? new Date(Date.now() - 30 * DAY).toISOString()
+    const { searchParams } = req.nextUrl
+    const siteId = searchParams.get('site_id')
+    const botType = searchParams.get('bot_type')
+    const page = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
+    const limit = Math.min(200, parseInt(searchParams.get('limit') ?? '50', 10))
+    const endDate = searchParams.get('end_date') ?? new Date().toISOString()
+    const startDate = searchParams.get('start_date') ?? new Date(Date.now() - 30 * DAY).toISOString()
 
-  // Resolve the sites this user owns. The `bot_visits` table has no user_id
-  // column, so it MUST be scoped to these site ids — otherwise the query would
-  // return every account's bot traffic (cross-account data leak). A requested
-  // site_id is honoured only if the user actually owns it.
-  const { data: ownedSites } = await supabaseAdmin
-    .from('sites')
-    .select('id')
-    .eq('user_id', uid)
-  const ownedIds = (ownedSites ?? []).map((s) => s.id)
-  if (siteId && !ownedIds.includes(siteId)) {
-    return NextResponse.json(emptyResponse(zeroUsage()))
-  }
-  // Site ids to aggregate over: the one requested (already verified owned) or all.
-  const scopeIds = siteId ? [siteId] : ownedIds
+    // Ownership: a requested site_id is honoured only if the user owns it. (The
+    // SQL function re-scopes too, but this returns zeroed usage without leaking
+    // the account's real figures for a site they don't own.)
+    if (siteId) {
+      const { data: owned } = await supabaseAdmin
+        .from('sites')
+        .select('id')
+        .eq('id', siteId)
+        .eq('user_id', uid)
+        .maybeSingle()
+      if (!owned) return NextResponse.json(emptyResponse(zeroUsage()))
+    }
 
-  // ── Fetch renders ───────────────────────────────────────────────────────────
-  let rq = supabaseAdmin
-    .from('renders')
-    .select('*')
-    .eq('user_id', uid)
-    .gte('created_at', startDate)
-    .lte('created_at', endDate)
-    .order('created_at', { ascending: false })
-  if (siteId) rq = rq.eq('site_id', siteId)
-  if (botType) rq = rq.eq('bot_type', botType)
+    // Paginated render history list — bounded by range/limit (no longer fetches
+    // every row just to slice one page).
+    let hq = supabaseAdmin
+      .from('renders')
+      .select('created_at, url, bot_name, bot_type, cache_hit, status_code, render_time_ms, user_agent')
+      .eq('user_id', uid)
+      .gte('created_at', startDate)
+      .lte('created_at', endDate)
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1)
+    if (siteId) hq = hq.eq('site_id', siteId)
+    if (botType) hq = hq.eq('bot_type', botType)
 
-  // ── Fetch bot visits (scoped to the user's own sites) ─────────────────────────
-  let bq = supabaseAdmin
-    .from('bot_visits')
-    .select('*')
-    .in('site_id', scopeIds)
-    .gte('created_at', startDate)
-    .lte('created_at', endDate)
-    .order('created_at', { ascending: false })
-  if (botType) bq = bq.eq('bot_type', botType)
-
-  // The three queries are independent — run them in parallel (one round-trip
-  // instead of three sequential ones) so the dashboard skeleton clears faster.
-  const [{ data: renders = [] }, { data: visits = [] }, { data: user }] =
-    await Promise.all([
-      rq,
-      bq,
+    // Aggregation (SQL — returns only small rolled-up results), usage stats and
+    // the history page, all in parallel.
+    const [{ data: overview }, { data: user }, { data: historyRows }] = await Promise.all([
+      supabaseAdmin.rpc('get_analytics_overview', {
+        p_uid: uid,
+        p_site_id: siteId,
+        p_bot_type: botType,
+        p_start: startDate,
+        p_end: endDate,
+      }),
       supabaseAdmin
         .from('users')
         .select('render_count, render_limit, monthly_reset_at')
         .eq('id', uid)
         .single(),
+      hq,
     ])
 
-  const usageStats = {
-    renderCount: user?.render_count ?? 0,
-    renderLimit: user?.render_limit ?? 1000,
-    percentUsed: user?.render_limit
-      ? Math.min(100, Math.round((user.render_count / user.render_limit) * 100))
-      : 0,
-    resetAt: user?.monthly_reset_at ?? new Date(Date.now() + 30 * DAY).toISOString(),
-  }
+    const usageStats = {
+      renderCount: user?.render_count ?? 0,
+      renderLimit: user?.render_limit ?? 1000,
+      percentUsed: user?.render_limit
+        ? Math.min(100, Math.round((user.render_count / user.render_limit) * 100))
+        : 0,
+      resetAt: user?.monthly_reset_at ?? new Date(Date.now() + 30 * DAY).toISOString(),
+    }
 
-  // ── No real data yet → return zeroed structure ───────────────────────────────
-  if ((renders?.length ?? 0) === 0 && (visits?.length ?? 0) === 0) {
-    return NextResponse.json(emptyResponse(usageStats))
-  }
+    const o = overview as AnalyticsOverview | null
 
-  const allRenders = renders ?? []
-  const allVisits = visits ?? []
+    // No activity yet → zeroed skeleton (keeps the charts from looking broken).
+    if (!o || (o.summary.totalRenders === 0 && o.summary.totalBotRequests === 0)) {
+      return NextResponse.json(emptyResponse(usageStats))
+    }
 
-  // ── Summary ──────────────────────────────────────────────────────────────────
-  const totalBotRequests = allVisits.length
-  const uniqueUrls = new Set([...allVisits, ...allRenders].map((r: any) => r.url)).size
-  const cacheHits = allRenders.filter((r: any) => r.cache_hit).length
-  const cacheHitRate = allRenders.length
-    ? Math.round((cacheHits / allRenders.length) * 100)
-    : 0
-  const avg = (rows: any[]) =>
-    rows.length ? Math.round(rows.reduce((s: number, r: any) => s + r.render_time_ms, 0) / rows.length) : 0
-
-  const timed = allRenders.filter((r: any) => r.render_time_ms != null)
-  // What the BOT experienced when served from cache (fast — the benefit).
-  const avgCacheServeTime = avg(timed.filter((r: any) => r.cache_hit))
-  // One-time background render cost on a cache miss (slow — not user-facing speed).
-  const avgRenderTime = avg(timed.filter((r: any) => !r.cache_hit))
-  const avgResponseTime = avg(timed) // overall (kept for back-compat)
-
-  const summary = {
-    totalBotRequests,
-    uniqueUrls,
-    cacheHitRate,
-    avgResponseTime,
-    avgCacheServeTime,
-    avgRenderTime,
-    totalRenders: allRenders.length,
-  }
-
-  // ── Bot timeline (per day, grouped bot buckets) ──────────────────────────────
-  const timelineMap = new Map<
-    string,
-    { date: string; googlebot: number; gptbot: number; bingbot: number; others: number }
-  >()
-  for (const v of allVisits) {
-    const d = dayKey(v.created_at)
-    const row =
-      timelineMap.get(d) ?? { date: d, googlebot: 0, gptbot: 0, bingbot: 0, others: 0 }
-    const name = (v.bot_name ?? '').toLowerCase()
-    if (name.includes('google')) row.googlebot++
-    else if (name.includes('gpt')) row.gptbot++
-    else if (name.includes('bing')) row.bingbot++
-    else row.others++
-    timelineMap.set(d, row)
-  }
-  const botTimeline = [...timelineMap.values()].sort((a, b) => a.date.localeCompare(b.date))
-
-  // ── Top crawlers ─────────────────────────────────────────────────────────────
-  const crawlerCount = new Map<string, number>()
-  for (const v of allVisits) {
-    const n = v.bot_name ?? 'Unknown'
-    crawlerCount.set(n, (crawlerCount.get(n) ?? 0) + 1)
-  }
-  const topCrawlers = [...crawlerCount.entries()]
-    .map(([botName, requests]) => ({
-      botName,
-      requests,
-      percentage: totalBotRequests ? Math.round((requests / totalBotRequests) * 100) : 0,
-    }))
-    .sort((a, b) => b.requests - a.requests)
-    .slice(0, 10)
-
-  // ── Bot type split ───────────────────────────────────────────────────────────
-  const botTypeSplit = { search: 0, ai: 0, social: 0, unknown: 0 }
-  for (const v of allVisits) {
-    const t = (v.bot_type ?? 'unknown') as keyof typeof botTypeSplit
-    botTypeSplit[t in botTypeSplit ? t : 'unknown']++
-  }
-
-  // ── Top pages ────────────────────────────────────────────────────────────────
-  const pageMap = new Map<
-    string,
-    { url: string; hits: number; bots: Set<string>; lastCrawled: string; cacheHit: boolean }
-  >()
-  for (const v of allVisits) {
-    const row =
-      pageMap.get(v.url) ??
-      { url: v.url, hits: 0, bots: new Set<string>(), lastCrawled: v.created_at, cacheHit: false }
-    row.hits++
-    if (v.bot_name) row.bots.add(v.bot_name)
-    if (v.created_at > row.lastCrawled) row.lastCrawled = v.created_at
-    pageMap.set(v.url, row)
-  }
-  for (const r of allRenders) {
-    const row = pageMap.get(r.url)
-    if (row && r.cache_hit) row.cacheHit = true
-  }
-  const topPages = [...pageMap.values()]
-    .map((p) => ({
-      url: p.url,
-      hits: p.hits,
-      uniqueBots: p.bots.size,
-      lastCrawled: p.lastCrawled,
-      cacheHit: p.cacheHit,
-    }))
-    .sort((a, b) => b.hits - a.hits)
-    .slice(0, 10)
-
-  // ── Render history (paginated) ───────────────────────────────────────────────
-  const renderHistory = allRenders
-    .slice((page - 1) * limit, page * limit)
-    .map((r: any) => ({
+    const renderHistory = (historyRows ?? []).map((r: any) => ({
       timestamp: r.created_at,
       url: r.url,
       botName: r.bot_name,
@@ -200,27 +108,16 @@ export async function GET(req: NextRequest) {
       userAgent: r.user_agent,
     }))
 
-  // ── Render trend (per day) ───────────────────────────────────────────────────
-  const trendMap = new Map<string, { date: string; renders: number; cacheHits: number }>()
-  for (const r of allRenders) {
-    const d = dayKey(r.created_at)
-    const row = trendMap.get(d) ?? { date: d, renders: 0, cacheHits: 0 }
-    row.renders++
-    if (r.cache_hit) row.cacheHits++
-    trendMap.set(d, row)
-  }
-  const renderTrend = [...trendMap.values()].sort((a, b) => a.date.localeCompare(b.date))
-
-  return NextResponse.json({
-    summary,
-    botTimeline,
-    topCrawlers,
-    botTypeSplit,
-    topPages,
-    renderHistory,
-    renderTrend,
-    usageStats,
-  })
+    return NextResponse.json({
+      summary: o.summary,
+      botTimeline: o.botTimeline,
+      topCrawlers: o.topCrawlers,
+      botTypeSplit: o.botTypeSplit,
+      topPages: o.topPages,
+      renderHistory,
+      renderTrend: o.renderTrend,
+      usageStats,
+    })
   } catch (error) {
     console.error('[ANALYTICS_GET]:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
