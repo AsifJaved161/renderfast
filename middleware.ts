@@ -17,6 +17,7 @@ const INJECT_API_PREFIXES = [
   '/api/gsc',
   '/api/team',
   '/api/onboarding',
+  '/api/seo-reports',
 ]
 
 function isInjectableApi(pathname: string): boolean {
@@ -186,5 +187,6 @@ export const config = {
     '/api/team',
     '/api/team/:path*',
     '/api/onboarding/:path*',
+    '/api/seo-reports/:path*',
   ],
 }

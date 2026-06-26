@@ -32,6 +32,7 @@ import {
   LineChartOutlined,
   DollarOutlined,
   FileTextOutlined,
+  FileSearchOutlined,
   CreditCardOutlined,
   LockOutlined,
   SettingOutlined,
@@ -123,6 +124,7 @@ const NAV: NavGroup[] = [
   {
     title: 'SITE HEALTH',
     items: [
+      { key: '/seo-reports', label: 'SEO Reports', icon: <FileSearchOutlined />, hint: 'Duplicate titles/content, thin pages, hreflang & a page explorer' },
       { key: '/404-checker', label: '404 Checker', icon: <WarningOutlined />, hint: 'Find broken links on your site' },
       { key: '/llms-txt', label: 'llms.txt', icon: <FileTextOutlined />, hint: 'Auto-generated llms.txt so AI systems understand your site' },
       { key: '/gsc', label: 'GSC', icon: <LineChartOutlined />, hint: 'Connect Google Search Console' },
