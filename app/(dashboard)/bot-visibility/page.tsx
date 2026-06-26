@@ -165,11 +165,13 @@ interface DerivedIssue {
   color: string
   icon: React.ReactNode
   fix: React.ReactNode // actionable "how to fix" guidance
-  action?: { label: string; href: string } // optional in-app link
+  action?: { label: string; href?: string; onClick?: () => void } // in-app link or action
 }
 
 // Derive the human-readable issues + how-to-fix guidance shown for one URL.
-function deriveIssues(u: UrlIssue): DerivedIssue[] {
+// `opts.onRescan` re-runs the scan in place (the right fix for a failed render —
+// the user is already integrated, so there's nothing to "set up" again).
+function deriveIssues(u: UrlIssue, opts: { onRescan: () => void; scanning: boolean }): DerivedIssue[] {
   const out: DerivedIssue[] = []
 
   if (!u.renderSucceeded)
@@ -179,8 +181,8 @@ function deriveIssues(u: UrlIssue): DerivedIssue[] {
       detail: 'Page render did not complete — main content may be empty.',
       color: 'red',
       icon: <CloseCircleOutlined />,
-      fix: 'Confirm the URL loads in a browser and that rendering is configured (Cloudflare). Then re-scan this domain.',
-      action: { label: 'Set up rendering', href: '/integration-wizard' },
+      fix: 'Open the URL below to confirm it loads in a browser, then re-scan. If it loads fine but keeps failing, the page may render too slowly or block automated browsers.',
+      action: { label: opts.scanning ? 'Re-scanning…' : 'Re-scan this domain', onClick: opts.onRescan },
     })
 
   if (u.contentDiffPercentage > CONTENT_DIFF_THRESHOLD)
@@ -498,7 +500,7 @@ export default function BotVisibilityPage() {
                 <Collapse
                   accordion
                   items={issues.map((u) => {
-                    const derived = deriveIssues(u)
+                    const derived = deriveIssues(u, { onRescan: rescan, scanning: jobActive })
                     return {
                       key: u.url,
                       label: (
@@ -537,9 +539,21 @@ export default function BotVisibilityPage() {
                                   </div>
                                   {d.action && (
                                     <div style={{ marginTop: 6 }}>
-                                      <Link href={d.action.href} style={{ color: BRAND, fontWeight: 600 }}>
-                                        {d.action.label} →
-                                      </Link>
+                                      {d.action.onClick ? (
+                                        <a
+                                          onClick={(e) => {
+                                            e.preventDefault()
+                                            d.action!.onClick!()
+                                          }}
+                                          style={{ color: BRAND, fontWeight: 600, cursor: jobActive ? 'default' : 'pointer', opacity: jobActive ? 0.6 : 1 }}
+                                        >
+                                          {d.action.label} →
+                                        </a>
+                                      ) : (
+                                        <Link href={d.action.href!} style={{ color: BRAND, fontWeight: 600 }}>
+                                          {d.action.label} →
+                                        </Link>
+                                      )}
                                     </div>
                                   )}
                                 </div>
