@@ -14,9 +14,11 @@
 //   Part 3  Storage         — persists to `render_diagnostics`, pruned to the
 //                            latest N runs per URL.
 // ─────────────────────────────────────────────────────────────────────────────
+import { createHash } from 'crypto'
 import { supabaseAdmin } from '@/lib/supabase'
 import { extractGeoSignals, computeAiCitationScore, type GeoSignals } from '@/lib/geo-signals'
 import { fetchCoreWebVitals, type CoreWebVitals } from '@/lib/web-vitals'
+import { normalizeUrl } from '@/lib/url-utils'
 
 // Master on/off switch — set RENDER_DIAGNOSTICS=off to disable with zero overhead.
 export const DIAGNOSTICS_ENABLED = process.env.RENDER_DIAGNOSTICS !== 'off'
@@ -152,6 +154,104 @@ function diffSeoElements(rawHtml: string, renderedHtml: string): MissingSeoEleme
     .filter((e) => !e.inRaw)
 }
 
+// ── Part 2b: SEO Reports page metadata ───────────────────────────────────────
+// Extract the fields the SEO Reports build on: title, canonical, word count,
+// content hash (for duplicate detection), same-domain inner links, and hreflang
+// alternates. Regex-based to stay parser-free like the rest of this module.
+const MAX_INNER_LINKS = 500
+
+function decodeBasicEntities(s: string): string {
+  return s
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export interface PageMeta {
+  pageTitle: string | null
+  canonicalUrl: string | null
+  wordCount: number
+  contentHash: string | null
+  innerLinks: string[]
+  hreflangLinks: { lang: string; href: string }[]
+}
+
+function extractPageMeta(html: string, pageUrl: string): PageMeta {
+  const titleM = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+  const pageTitle = titleM ? decodeBasicEntities(titleM[1]) || null : null
+
+  let canonicalUrl: string | null = null
+  const canM = html.match(/<link[^>]+rel=["']canonical["'][^>]*>/i)
+  const canHref = canM?.[0].match(/href=["']([^"']+)["']/i)?.[1]
+  if (canHref) {
+    try {
+      canonicalUrl = new URL(canHref, pageUrl).toString()
+    } catch {
+      /* invalid href → leave null */
+    }
+  }
+
+  const text = stripToText(html)
+  const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0
+  const contentHash = text ? createHash('sha256').update(text.toLowerCase()).digest('hex') : null
+
+  let host = ''
+  try {
+    host = new URL(pageUrl).hostname.replace(/^www\./, '')
+  } catch {
+    /* ignore */
+  }
+  const innerLinks: string[] = []
+  const seen = new Set<string>()
+  const aRe = /<a\b[^>]*\shref=["']([^"'#][^"']*)["']/gi
+  let m: RegExpExecArray | null
+  while ((m = aRe.exec(html)) && innerLinks.length < MAX_INNER_LINKS) {
+    let abs: URL
+    try {
+      abs = new URL(m[1], pageUrl)
+    } catch {
+      continue
+    }
+    if (abs.protocol !== 'http:' && abs.protocol !== 'https:') continue
+    if (abs.hostname.replace(/^www\./, '') !== host) continue // internal links only
+    abs.hash = ''
+    let norm: string
+    try {
+      norm = normalizeUrl(abs.toString())
+    } catch {
+      norm = abs.toString()
+    }
+    if (!seen.has(norm)) {
+      seen.add(norm)
+      innerLinks.push(norm)
+    }
+  }
+
+  const hreflangLinks: { lang: string; href: string }[] = []
+  const hRe = /<link\b[^>]*rel=["']alternate["'][^>]*>/gi
+  let hm: RegExpExecArray | null
+  while ((hm = hRe.exec(html)) && hreflangLinks.length < 100) {
+    const tag = hm[0]
+    const lang = tag.match(/hreflang=["']([^"']+)["']/i)?.[1]
+    const href = tag.match(/href=["']([^"']+)["']/i)?.[1]
+    if (lang && href) {
+      try {
+        hreflangLinks.push({ lang, href: new URL(href, pageUrl).toString() })
+      } catch {
+        /* invalid href → skip */
+      }
+    }
+  }
+
+  return { pageTitle, canonicalUrl, wordCount, contentHash, innerLinks, hreflangLinks }
+}
+
 // ── Render-success heuristic (Part 1) ────────────────────────────────────────
 // "true only if no critical JS error blocked main content from appearing."
 // We approximate: the rendered page has real visible text AND no uncaught
@@ -175,6 +275,13 @@ async function persistDiagnostic(row: {
   geo_signals: GeoSignals
   ai_citation_score: number
   core_web_vitals: CoreWebVitals | null
+  page_title: string | null
+  canonical_url: string | null
+  word_count: number
+  content_hash: string | null
+  inner_links: string[]
+  hreflang_links: { lang: string; href: string }[]
+  http_status: number | null
 }) {
   await supabaseAdmin.from('render_diagnostics').insert({
     ...row,
@@ -205,6 +312,7 @@ export async function runDiagnostics(input: DiagnosticInput): Promise<void> {
   // Use a caller-supplied raw HTML if given (avoids a duplicate origin fetch);
   // otherwise fetch the raw, no-JS HTML a non-JS crawler would receive.
   let rawHtml = ''
+  let httpStatus: number | null = null
   if (input.rawHtml != null) {
     rawHtml = input.rawHtml
   } else {
@@ -214,6 +322,7 @@ export async function runDiagnostics(input: DiagnosticInput): Promise<void> {
         signal: AbortSignal.timeout(RAW_FETCH_TIMEOUT_MS),
       })
       rawHtml = await res.text()
+      httpStatus = res.status
     } catch {
       // Raw fetch failed (timeout/blocked) — treat as empty; diff will read 100%.
     }
@@ -251,6 +360,9 @@ export async function runDiagnostics(input: DiagnosticInput): Promise<void> {
     }
   }
 
+  // SEO Reports page metadata (title/canonical/word-count/content-hash/links).
+  const meta = extractPageMeta(renderedHtml, input.url)
+
   await persistDiagnostic({
     site_id: input.siteId,
     url: input.url,
@@ -263,6 +375,13 @@ export async function runDiagnostics(input: DiagnosticInput): Promise<void> {
     geo_signals: geoSignals,
     ai_citation_score: aiCitationScore,
     core_web_vitals: coreWebVitals,
+    page_title: meta.pageTitle,
+    canonical_url: meta.canonicalUrl,
+    word_count: meta.wordCount,
+    content_hash: meta.contentHash,
+    inner_links: meta.innerLinks,
+    hreflang_links: meta.hreflangLinks,
+    http_status: httpStatus,
   })
 }
 
