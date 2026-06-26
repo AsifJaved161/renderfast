@@ -161,6 +161,32 @@ export async function sendBanEmail(user: DbUser | { email: string } | string, re
   await send(emailOf(user), 'Your RenderForAI account has been suspended', html)
 }
 
+// ── Error-rate alert (daily while above threshold) ───────────────────────────
+export async function sendErrorRateEmail(user: DbUser, percent: number, errors: number, total: number) {
+  const html = shell(
+    `${percent}% of recent renders are failing`,
+    `<p>Hi ${user.full_name ?? 'there'}, in the last 24 hours <strong>${errors.toLocaleString()}</strong> of
+     <strong>${total.toLocaleString()}</strong> renders returned an error (${percent}%).</p>
+     <p>This usually means pages are timing out, returning 4xx/5xx, or blocking our renderer. Check the
+     Render Errors page for the failing URLs and reasons.</p>
+     ${button(`${APP_URL}/render-errors`, 'View render errors')}`
+  )
+  await send(user.email, `RenderForAI: ${percent}% of your renders are failing`, html)
+}
+
+// ── Site offline alert ───────────────────────────────────────────────────────
+export async function sendSiteOfflineEmail(user: DbUser, domain: string) {
+  const html = shell(
+    `No bot traffic from ${domain}`,
+    `<p>Hi ${user.full_name ?? 'there'}, we haven't seen any crawler traffic through RenderForAI for
+     <strong>${domain}</strong> in over 7 days.</p>
+     <p>If that's unexpected, your integration may have been removed or stopped routing bots to us.
+     Re-check the integration so search &amp; AI crawlers keep getting your prerendered pages.</p>
+     ${button(`${APP_URL}/integration-wizard`, 'Check integration')}`
+  )
+  await send(user.email, `RenderForAI: ${domain} looks offline`, html)
+}
+
 // ── Render error alert ───────────────────────────────────────────────────────
 export async function sendRenderErrorEmail(user: DbUser, url: string, error: string) {
   const html = shell(

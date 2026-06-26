@@ -138,21 +138,33 @@ page/render; "crawler" = our render queue; "pendings" = our caching queue.)
 > Built on migration 020 + diagnostics metadata capture. New /seo-reports page +
 > /api/seo-reports/[siteId]. **Run migration 020 in Supabase before deploy.**
 
-### Phase 3 — Status views & dashboard depth
-11. **Errors view** with typed error reasons.
-12. **Cache freshness** distribution charts (clickable bars).
-13. Dashboard: **hits by HTTP status** (pie+bar) + **response time by status**.
-14. **Advanced filters** (path wildcard/exclude, date period) on captures/errors/queue.
+### Phase 3 — Status views & dashboard depth  ✅ DONE
+11. ✅ **Render Errors** view with typed error reasons (+ retry/export).
+12. ✅ **Cache freshness** distribution chart.
+13. ✅ Dashboard: **hits by HTTP status** (donut) + **response time by status** (migration 021).
+14. ✅ **Advanced filters** (path wildcard `*` / `-exclude`, date range) on Cache & Queue.
 
-### Phase 4 — Advanced per-site settings
-15. **Excluded paths** + **Entry points**.
-16. **Custom user-agent**, **custom headers**, **emulate mobile (per-site)**, **per-site block-resources**.
-17. **Per-path expiration rules**.
-18. **JS redirect detection**.
-19. **Rewrite rules + test** (largest; do last).
+### Phase 4 — Advanced per-site settings  ✅ CORE DONE (migration 022)
+15. ✅ **Excluded paths** + **Entry points** (wired into proxy/queue/sitemap).
+16. ✅ **Custom user-agent**, **custom headers**, **emulate mobile**, **per-site block-resources** (→ renderer).
+17. ✅ **Per-path expiration rules** (cache TTL override).
+18. ⏸️ **JS redirect detection** — deferred (large standalone; needs renderer to report final URL).
+19. ⏸️ **Rewrite rules + test** — deferred (a full mod_rewrite-style engine; biggest single item).
 
-### Phase 5 — nice-to-have
-20. Debug logs per capture.
-21. Offline-site notification email; error-quota email.
-22. Authenticated management API + docs.
-23. Chrome extension.
+### Phase 5  ✅ DONE / scoped
+20. ✅(equiv) Debug logs per capture — console errors + failed requests already captured per render
+    (shown in Bot Visibility) and JS errors in SEO Reports.
+21. ✅ **Error-rate** email + **offline-site** email (daily cron, opt-in).
+22. 🟡 Authenticated API — api-key endpoints exist (`/api/render`, `/api/recache`); a formal public
+    API docs page is the only remaining bit.
+23. ❌ Chrome extension — out of scope (separate distributable, not part of this app).
+
+---
+## Remaining (explicitly deferred)
+- Rewrite-rules engine + test tool (Phase 4 #19) — large; design as its own feature.
+- JS-redirect detection (Phase 4 #18).
+- Public-API documentation page (Phase 5 #22).
+- Chrome extension (Phase 5 #23) — out of scope.
+
+## Migrations to run in Supabase (idempotent, in order)
+019_analytics_aggregates · 020_seo_reports · 021_analytics_status_split · 022_site_settings
