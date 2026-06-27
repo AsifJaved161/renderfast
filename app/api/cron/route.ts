@@ -20,8 +20,8 @@ const JOBS: { name: string; path: string }[] = [
   { name: 'sitemaps', path: '/api/sitemaps/recheck' },
   { name: 'llms', path: '/api/llms/regenerate' },
   { name: 'digest', path: '/api/email/digest' },
-  // Resets monthly render_count + sends usage warnings. Without this a user who
-  // hits their render limit would stay blocked forever (usage never resets).
+  // Sends usage warnings (80%/100%) + error-rate/offline alerts. render_count is
+  // a lifetime total and is NOT reset here — over-limit users must upgrade.
   { name: 'usage', path: '/api/email/usage-check' },
 ]
 

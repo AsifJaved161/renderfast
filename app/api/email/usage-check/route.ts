@@ -6,38 +6,24 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-const THIRTY_DAYS_MS = 30 * 24 * 3600 * 1000
 const DAY_MS = 24 * 3600 * 1000
 const ERROR_RATE_THRESHOLD = 25 // % of renders failing (4xx/5xx) to trigger an alert
 const ERROR_MIN_SAMPLE = 20 // need at least this many renders/day before alerting
 
-// Resets each user's monthly render_count once their window elapses, and emails
-// 80%/100% usage warnings. CRITICAL: this is what frees a user who has hit their
-// render limit — it MUST run on a schedule (wired into /api/cron's dispatcher).
+// Emails 80%/100% usage warnings and error-rate/offline alerts. NOTE: render_count
+// is a lifetime total and is intentionally NOT auto-reset each month — a user who
+// reaches their render limit must upgrade their plan (which raises render_limit) to
+// keep rendering; the count is never wiped on a schedule.
 async function runUsageCheck() {
   const { data: users, error } = await supabaseAdmin.from('users').select('*')
   if (error) throw new Error(error.message)
 
   let processed = 0
   let warned = 0
-  let reset = 0
   const now = Date.now()
 
   for (const user of (users ?? []) as DbUser[]) {
     processed++
-
-    // a/b) Reset usage if the monthly window has elapsed.
-    if (user.monthly_reset_at && new Date(user.monthly_reset_at).getTime() <= now) {
-      await supabaseAdmin
-        .from('users')
-        .update({
-          render_count: 0,
-          monthly_reset_at: new Date(now + THIRTY_DAYS_MS).toISOString(),
-        })
-        .eq('id', user.id)
-      reset++
-      continue // fresh window — no warnings this cycle
-    }
 
     if (!user.render_limit) continue
     const percent = Math.round((user.render_count / user.render_limit) * 100)
@@ -85,7 +71,7 @@ async function runUsageCheck() {
     }
   }
 
-  return { processed, warned, reset }
+  return { processed, warned }
 }
 
 // Accepts the platform's two cron-auth conventions: `Authorization: Bearer
