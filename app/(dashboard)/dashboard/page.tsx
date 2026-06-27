@@ -27,6 +27,8 @@ import {
   ThunderboltFilled,
   LinkOutlined,
   InfoCircleOutlined,
+  WarningOutlined,
+  HddOutlined,
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
 import { DonutChart, Legend, BarChart, LineChart, MetricTilesChart } from '@/components/charts/Charts'
@@ -183,6 +185,12 @@ export default function DashboardPage() {
   )
   const { data: botRaw } = useSWR<Analytics>(`/api/analytics?${botParams.toString()}`)
 
+  // Cache size — separate call so it reacts to site filter without touching analytics.
+  const cacheParams = new URLSearchParams({ summary: 'true' })
+  if (siteId) cacheParams.set('site_id', siteId)
+  const { data: cacheSumData } = useSWR<{ summary: { totalSizeBytes: number } }>(`/api/cache?${cacheParams}`)
+  const totalSizeKb = (cacheSumData?.summary?.totalSizeBytes ?? 0) / 1024
+
   const d = raw?.summary ? raw : EMPTY
   // Use botRaw when available (user changed filter); fall back to main fetch's
   // botTimeline so the chart is never blank while the separate SWR is loading.
@@ -281,6 +289,7 @@ export default function DashboardPage() {
       <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
         <StatCard
           loading={loading}
+          lgSpan={5}
           title="Total Bot Requests"
           value={d.summary.totalBotRequests}
           icon={<ThunderboltOutlined style={{ color: BRAND }} />}
@@ -288,6 +297,7 @@ export default function DashboardPage() {
         />
         <StatCard
           loading={loading}
+          lgSpan={5}
           title="Cache Hit Rate"
           value={d.summary.cacheHitRate}
           suffix="%"
@@ -296,6 +306,7 @@ export default function DashboardPage() {
         />
         <StatCard
           loading={loading}
+          lgSpan={5}
           title="Cache Response Time"
           value={d.summary.avgCacheServeTime > 0 ? d.summary.avgCacheServeTime : '—'}
           suffix={d.summary.avgCacheServeTime > 0 ? 'ms' : undefined}
@@ -304,11 +315,27 @@ export default function DashboardPage() {
         />
         <StatCard
           loading={loading}
+          lgSpan={5}
           title="Unique URLs"
           value={d.summary.uniqueUrls}
           icon={<LinkOutlined style={{ color: BRAND }} />}
           tooltip="Number of distinct pages crawled by bots on your domains."
         />
+        <Col xs={12} lg={4}>
+          <Card>
+            {loading ? (
+              <Skeleton active paragraph={false} />
+            ) : (
+              <Statistic
+                title={<StatTitle hint="Total storage used by all your cached pages. Visit Cache Manager for more details.">Total Cache Size</StatTitle>}
+                value={totalSizeKb >= 1024 ? +(totalSizeKb / 1024).toFixed(2) : +totalSizeKb.toFixed(1)}
+                precision={totalSizeKb >= 1024 ? 2 : 1}
+                suffix={totalSizeKb >= 1024 ? 'MB' : 'KB'}
+                prefix={<HddOutlined style={{ color: BRAND }} />}
+              />
+            )}
+          </Card>
+        </Col>
       </Row>
 
       {/* ── Bots Served from Cache ──────────────────────────────────────────── */}
@@ -453,25 +480,110 @@ export default function DashboardPage() {
             <Card title={<StatTitle hint="Breakdown of render responses by HTTP status class. Mostly 2xx is healthy; many 4xx/5xx means pages are failing for bots.">Hits by HTTP Status</StatTitle>}>
               {loading ? (
                 <Skeleton active />
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-                  <DonutChart data={d.statusSplit.map((s) => ({ label: s.code, value: s.hits, color: STATUS_COLOR[s.code] ?? '#bfbfbf' }))} />
-                  <Legend data={d.statusSplit.map((s) => ({ label: s.code, value: s.hits, color: STATUS_COLOR[s.code] ?? '#bfbfbf' }))} />
-                </div>
-              )}
+              ) : (() => {
+                const totalHits = d.statusSplit.reduce((s, r) => s + r.hits, 0)
+                const errorHits = d.statusSplit
+                  .filter((s) => s.code === '4xx' || s.code === '5xx')
+                  .reduce((s, r) => s + r.hits, 0)
+                const errorRate = totalHits > 0 ? Math.round((errorHits / totalHits) * 100) : 0
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+                    <DonutChart
+                      data={d.statusSplit.map((s) => ({ label: s.code, value: s.hits, color: STATUS_COLOR[s.code] ?? '#bfbfbf' }))}
+                      centerLabel={totalHits.toLocaleString()}
+                      centerSub="total hits"
+                    />
+                    <Legend data={d.statusSplit.map((s) => ({ label: s.code, value: s.hits, color: STATUS_COLOR[s.code] ?? '#bfbfbf' }))} />
+                    {errorRate > 0 ? (
+                      <div style={{
+                        background: errorRate > 10 ? '#fff1f0' : '#fffbe6',
+                        border: `1px solid ${errorRate > 10 ? '#ffa39e' : '#ffe58f'}`,
+                        borderRadius: 6,
+                        padding: '6px 14px',
+                        fontSize: 13,
+                        color: errorRate > 10 ? '#a8071a' : '#874d00',
+                        width: '100%',
+                        textAlign: 'center',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                      }}>
+                        <WarningOutlined />
+                        {errorRate}% error rate — {errorHits.toLocaleString()} failed {errorHits === 1 ? 'request' : 'requests'} (4xx/5xx)
+                      </div>
+                    ) : totalHits > 0 ? (
+                      <div style={{
+                        background: '#f6ffed',
+                        border: '1px solid #b7eb8f',
+                        borderRadius: 6,
+                        padding: '6px 14px',
+                        fontSize: 13,
+                        color: '#135200',
+                        width: '100%',
+                        textAlign: 'center',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                      }}>
+                        <CheckCircleOutlined />
+                        All {totalHits.toLocaleString()} requests succeeded — no errors
+                      </div>
+                    ) : null}
+                  </div>
+                )
+              })()}
             </Card>
           </Col>
           <Col xs={24} lg={12}>
-            <Card title={<StatTitle hint="Mean render time per HTTP status class — spot slow error pages.">Response Time by Status</StatTitle>}>
+            <Card title={<StatTitle hint="Average render time per HTTP status class. Green = fast (&lt;1s), amber = needs work (1–3s), red = slow (&gt;3s).">Response Time by Status</StatTitle>}>
               {loading ? (
                 <Skeleton active />
-              ) : (
-                <BarChart
-                  data={d.responseByStatus.map((s) => ({ label: s.code, value: s.avgMs }))}
-                  unit="ms"
-                  colors={d.responseByStatus.map((s) => STATUS_COLOR[s.code] ?? '#bfbfbf')}
-                />
-              )}
+              ) : (() => {
+                const avg2xx = d.responseByStatus.find((s) => s.code === '2xx')?.avgMs ?? 0
+                const perfBadge =
+                  avg2xx === 0 ? null
+                  : avg2xx < 1000 ? { label: 'Fast', color: '#135200', bg: '#f6ffed', border: '#b7eb8f', icon: <CheckCircleOutlined /> }
+                  : avg2xx < 3000 ? { label: 'Needs Work', color: '#874d00', bg: '#fffbe6', border: '#ffe58f', icon: <WarningOutlined /> }
+                  : { label: 'Slow', color: '#a8071a', bg: '#fff1f0', border: '#ffa39e', icon: <WarningOutlined /> }
+                return (
+                  <>
+                    <BarChart
+                      data={d.responseByStatus.map((s) => ({ label: s.code, value: s.avgMs }))}
+                      colors={d.responseByStatus.map((s) =>
+                        s.avgMs < 1000 ? '#2da01d' : s.avgMs < 3000 ? '#faad14' : '#ff4d4f'
+                      )}
+                      formatValue={(ms) => ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`}
+                    />
+                    <div style={{ marginTop: 12, display: 'flex', justifyContent: 'center', gap: 20, fontSize: 12, color: '#9ca3af' }}>
+                      <span><span style={{ color: '#2da01d', fontWeight: 700 }}>●</span> &lt;1s Fast</span>
+                      <span><span style={{ color: '#faad14', fontWeight: 700 }}>●</span> 1–3s Needs Work</span>
+                      <span><span style={{ color: '#ff4d4f', fontWeight: 700 }}>●</span> &gt;3s Slow</span>
+                    </div>
+                    {perfBadge && (
+                      <div style={{
+                        marginTop: 10,
+                        background: perfBadge.bg,
+                        border: `1px solid ${perfBadge.border}`,
+                        borderRadius: 6,
+                        padding: '6px 14px',
+                        fontSize: 13,
+                        color: perfBadge.color,
+                        textAlign: 'center',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        fontWeight: 600,
+                      }}>
+                        {perfBadge.icon}
+                        2xx avg: {avg2xx >= 1000 ? `${(avg2xx / 1000).toFixed(1)}s` : `${avg2xx}ms`} — {perfBadge.label}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
             </Card>
           </Col>
         </Row>
@@ -532,6 +644,7 @@ function StatCard({
   suffix,
   icon,
   tooltip,
+  lgSpan = 6,
 }: {
   loading: boolean
   title: string
@@ -539,6 +652,7 @@ function StatCard({
   suffix?: string
   icon: React.ReactNode
   tooltip?: string
+  lgSpan?: number
 }) {
   const titleNode = tooltip ? (
     <Space size={4}>
@@ -551,7 +665,7 @@ function StatCard({
     title
   )
   return (
-    <Col xs={12} lg={6}>
+    <Col xs={12} lg={lgSpan}>
       <Card>
         {loading ? (
           <Skeleton active paragraph={false} />
