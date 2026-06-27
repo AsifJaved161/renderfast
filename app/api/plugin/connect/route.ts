@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getPlanLimits } from '@/lib/plan-utils'
+import { normalizeDomain } from '@/lib/url-utils'
 import type { Plan } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = (await req.json().catch(() => ({}))) as { domain?: string; name?: string }
-    const domain = (body.domain ?? '').trim().toLowerCase().replace(/^www\./, '')
+    const domain = normalizeDomain(body.domain ?? '')
     if (!domain || !DOMAIN_RE.test(domain)) {
       return NextResponse.json({ error: 'Invalid domain' }, { status: 400 })
     }

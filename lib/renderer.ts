@@ -7,6 +7,7 @@ export interface RenderResult {
   renderTimeMs: number
   statusCode: number
   error?: string
+  notConfigured?: boolean // Cloudflare creds absent — caller must NOT cache/bill
 }
 
 // Cloudflare is "configured" when we have a token AND either an account id
@@ -33,20 +34,20 @@ export async function renderPage(url: string, opts: RenderOptions = {}): Promise
   const isMobile = !!opts.isMobile
   const cf = await getCloudflareConfig()
 
-  // ── Dev fallback (Cloudflare not configured) ─────────────────────────────────
-  // Only used when Cloudflare creds are absent, so local/dev work doesn't 500.
-  // In production with Cloudflare configured this branch never runs.
+  // ── Cloudflare not configured ────────────────────────────────────────────────
+  // Return a clean error (NOT a stub page). A stub looked like a successful
+  // render, so callers cached it in KV and billed a render — poisoning the cache
+  // with a "not configured" page if creds were ever missing/lapsed. With an error
+  // every caller's `if (error || !html)` branch already does the safe thing:
+  // proxy 302s the bot to origin, the queue marks the item failed, the API 503s.
   if (!configured(cf)) {
-    const stubHtml = `<!DOCTYPE html>
-<html>
-<head><title>RenderForAI (not configured) - ${url}</title><base href="${url}"></head>
-<body>
-  <h1>RenderForAI — rendering not configured</h1>
-  <p>URL: ${url}</p>
-  <p>Set the Cloudflare account ID and API token to enable real rendering.</p>
-</body>
-</html>`
-    return { html: stubHtml, renderTimeMs: 50, statusCode: 200 }
+    return {
+      html: '',
+      renderTimeMs: 0,
+      statusCode: 503,
+      error: 'Rendering not configured',
+      notConfigured: true,
+    }
   }
 
   const contentUrl =

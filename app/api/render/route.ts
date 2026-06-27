@@ -8,6 +8,9 @@ import {
 } from '@/lib/kv'
 import { renderPage } from '@/lib/renderer'
 import { supabaseAdmin } from '@/lib/supabase'
+import { normalizeUrl } from '@/lib/url-utils'
+import { incrementRenderCounts } from '@/lib/render-billing'
+import { getSiteSettings, toRenderOptions } from '@/lib/site-settings'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -54,19 +57,39 @@ export async function POST(req: NextRequest) {
 
   // ── 4. Parse body ───────────────────────────────────────────────────────────
   const body = await req.json().catch(() => ({}))
-  const url: string | undefined = body.url
-  const siteId: string | undefined = body.site_id
-  if (!url) {
+  const rawUrl: string | undefined = body.url
+  if (!rawUrl) {
     return NextResponse.json({ error: 'url is required' }, { status: 400 })
   }
 
   let parsed: URL
   try {
-    parsed = new URL(url)
+    // Normalize (strip tracking params) so this shares ONE cache key with the
+    // proxy — otherwise the same page would be rendered/cached twice.
+    parsed = new URL(normalizeUrl(rawUrl))
   } catch {
     return NextResponse.json({ error: 'Invalid URL' }, { status: 400 })
   }
+  const url = parsed.toString()
   const domain = parsed.hostname
+
+  // Resolve the owning site: explicit site_id, else match the URL's domain to one
+  // of this user's registered sites (www-insensitive). May stay null for a URL
+  // not tied to a registered site — migration 024 makes those rows loggable.
+  let siteId: string | null = typeof body.site_id === 'string' ? body.site_id : null
+  if (!siteId) {
+    const bare = domain.replace(/^www\./, '')
+    const { data: s } = await supabaseAdmin
+      .from('sites')
+      .select('id')
+      .eq('user_id', user.id)
+      .in('domain', Array.from(new Set([domain, bare, `www.${bare}`])))
+      .limit(1)
+      .maybeSingle()
+    siteId = s?.id ?? null
+  }
+  // Honor the site's render overrides (mobile/UA/headers/blocked) when known.
+  const renderOpts = siteId ? toRenderOptions(await getSiteSettings(siteId)) : {}
 
   // ── 5. Cache check ──────────────────────────────────────────────────────────
   const cached = await getCachedPage(domain, url)
@@ -81,7 +104,10 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 6. Render (Cloudflare Browser Rendering) ────────────────────────────────
-  const { html, renderTimeMs, statusCode, error } = await renderPage(url)
+  const { html, renderTimeMs, statusCode, error, notConfigured } = await renderPage(url, renderOpts)
+  if (notConfigured) {
+    return NextResponse.json({ error: 'Rendering is not configured yet' }, { status: 503 })
+  }
   if (error || !html) {
     return NextResponse.json({ error: error ?? 'Render failed', url }, { status: 502 })
   }
@@ -91,7 +117,7 @@ export async function POST(req: NextRequest) {
 
   await supabaseAdmin.from('cache_entries').upsert(
     {
-      site_id: siteId ?? null,
+      site_id: siteId,
       user_id: user.id,
       url,
       url_hash: `${domain}:${parsed.pathname}${parsed.search}`,
@@ -106,15 +132,12 @@ export async function POST(req: NextRequest) {
   )
 
   // ── 8. Increment render_count + log render ──────────────────────────────────
-  await supabaseAdmin
-    .from('users')
-    .update({ render_count: user.render_count + 1 })
-    .eq('id', user.id)
+  await incrementRenderCounts(user.id, siteId, 1)
 
   const ua = req.headers.get('user-agent') ?? ''
   const bot = detectBot(ua)
   await supabaseAdmin.from('renders').insert({
-    site_id: siteId ?? null,
+    site_id: siteId,
     user_id: user.id,
     url,
     bot_name: bot.botName,

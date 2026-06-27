@@ -8,6 +8,7 @@ import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
 import { captureValidators, originChanged, fingerprint } from '@/lib/revalidate'
 import { getServableLlmsTxt } from '@/lib/llms-txt'
 import { supabaseAdmin } from '@/lib/supabase'
+import { incrementRenderCounts } from '@/lib/render-billing'
 import { getSiteSettings, toRenderOptions, isExcludedPath, pathExpiryDays } from '@/lib/site-settings'
 
 export const runtime = 'nodejs'
@@ -301,15 +302,8 @@ async function persistRender(
   ttlSeconds: number = CACHE_TTL
 ) {
   try {
-    await supabaseAdmin
-      .from('users')
-      .update({ render_count: owner.renderCount + 1 })
-      .eq('id', owner.userId)
-
-    await supabaseAdmin
-      .from('sites')
-      .update({ render_count: owner.siteRenderCount + 1 })
-      .eq('id', owner.siteId)
+    // Atomic bill (user + site) — no read-then-write race on concurrent misses.
+    await incrementRenderCounts(owner.userId, owner.siteId, 1)
 
     await supabaseAdmin.from('cache_entries').upsert(
       {

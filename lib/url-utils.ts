@@ -15,6 +15,18 @@ const TRACKING_PARAMS = new Set([
   'amp', 'noamp', // AMP variants → fold into the canonical page
 ])
 
+// Normalize a domain for storage AND matching: lowercase, drop any pasted
+// protocol/path, strip a leading "www." and a trailing dot. Without this the
+// dashboard could store "WWW.Example.com/" while the proxy looks up the bot's
+// lowercase hostname "example.com" and never matches — so prerendering silently
+// never runs. Keeps dashboard, WordPress plugin and proxy resolving one site.
+export function normalizeDomain(input: string): string {
+  let d = (input ?? '').trim().toLowerCase()
+  d = d.replace(/^https?:\/\//, '').replace(/\/.*$/, '') // tolerate a full URL
+  d = d.replace(/^www\./, '').replace(/\.$/, '')
+  return d
+}
+
 // Strip tracking params + hash, sort remaining params for a stable cache key.
 export function normalizeUrl(input: string): string {
   try {

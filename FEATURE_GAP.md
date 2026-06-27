@@ -167,4 +167,5 @@ page/render; "crawler" = our render queue; "pendings" = our caching queue.)
 - Chrome extension (Phase 5 #23) — out of scope.
 
 ## Migrations to run in Supabase (idempotent, in order)
-019_analytics_aggregates · 020_seo_reports · 021_analytics_status_split · 022_site_settings
+019_analytics_aggregates · 020_seo_reports · 021_analytics_status_split · 022_site_settings ·
+023_render_count_rpc (atomic render billing) · 024_nullable_render_site (log generic /api/render hits)

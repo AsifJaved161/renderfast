@@ -683,6 +683,27 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
                     }
                   />
                 )}
+                {renderLimit > 0 && rendersUsed >= renderLimit && (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    style={{ marginBottom: 16 }}
+                    message="You've reached your render limit"
+                    description={
+                      <div>
+                        <p style={{ margin: '4px 0 8px' }}>
+                          You&apos;ve used {rendersUsed.toLocaleString()} of {renderLimit.toLocaleString()} renders.
+                          New pages won&apos;t be prerendered (crawlers are served your live page) until you upgrade.
+                        </p>
+                        <Link href="/dashboard/billing">
+                          <Button type="primary" size="small" style={{ background: BRAND, borderColor: BRAND }}>
+                            Upgrade plan
+                          </Button>
+                        </Link>
+                      </div>
+                    }
+                  />
+                )}
                 {children}
               </main>
             </Content>

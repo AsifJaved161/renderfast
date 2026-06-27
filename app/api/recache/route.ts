@@ -5,6 +5,8 @@ import { setCachedPage } from '@/lib/kv'
 import { captureValidators } from '@/lib/revalidate'
 import { getOpsConfig } from '@/lib/app-config'
 import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
+import { incrementRenderCounts } from '@/lib/render-billing'
+import { getSiteSettings, toRenderOptions, isExcludedPath } from '@/lib/site-settings'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -105,18 +107,31 @@ async function recache(user: Owner, items: Item[]) {
   const { cacheTtlSeconds, queueThrottleMs, hardCacheTtlDays } = await getOpsConfig()
   const hardTtl = hardCacheTtlDays * 86400
   let budget = user.render_limit > 0 ? Math.max(0, user.render_limit - user.render_count) : Infinity
-  let rendered = 0
+  let stopped = false // set when rendering can't proceed (not configured) → re-queue the rest
   const overflow: Item[] = []
 
   for (const it of items) {
-    // Out of time or quota → hand the rest to the existing caching queue.
-    if (Date.now() >= deadline || budget <= 0) {
+    // Out of time / quota / unrenderable now → hand the rest to the caching queue.
+    if (stopped || Date.now() >= deadline || budget <= 0) {
       overflow.push(it)
       continue
     }
     try {
       const parsed = new URL(it.url)
-      const { html, renderTimeMs, statusCode, error } = await renderPage(it.url)
+      // Honor the site's advanced settings (mobile/UA/headers/blocked + excluded).
+      const settings = await getSiteSettings(it.siteId)
+      if (isExcludedPath(it.url, settings.excludedPaths)) continue // owner excluded this path
+
+      const { html, renderTimeMs, statusCode, error, notConfigured } = await renderPage(
+        it.url,
+        toRenderOptions(settings)
+      )
+      if (notConfigured) {
+        // Rendering isn't configured — don't fail/lose URLs; re-queue this + the rest.
+        stopped = true
+        overflow.push(it)
+        continue
+      }
       if (error || !html) continue
 
       // Write the SAME KV key the proxy reads (host + normalized url).
@@ -133,7 +148,7 @@ async function recache(user: Owner, items: Item[]) {
           render_time_ms: renderTimeMs,
           cached_at: new Date().toISOString(),
           expires_at: new Date(Date.now() + cacheTtlSeconds * 1000).toISOString(),
-          is_mobile: false,
+          is_mobile: settings.emulateMobile,
           ...(v ?? {}),
         },
         { onConflict: 'url_hash' }
@@ -151,20 +166,13 @@ async function recache(user: Owner, items: Item[]) {
         ip_address: null,
       })
 
-      rendered++
+      // Atomic bill (user + site) per render.
+      await incrementRenderCounts(user.id, it.siteId, 1)
       budget--
       await sleep(queueThrottleMs) // pace renders to respect Cloudflare's rate limit
     } catch {
       // one bad URL must not abort the batch
     }
-  }
-
-  // Bump the owner's render_count once for the batch.
-  if (rendered > 0) {
-    await supabaseAdmin
-      .from('users')
-      .update({ render_count: user.render_count + rendered })
-      .eq('id', user.id)
   }
 
   // Overflow (deadline/quota) → enqueue for the existing queue drainer + cron.

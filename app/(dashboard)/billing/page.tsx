@@ -152,10 +152,10 @@ export default function BillingPage() {
                   percent={usage.percentUsed}
                   strokeColor={usage.percentUsed > 80 ? '#ff4d4f' : BRAND}
                 />
-                {usage.resetAt && (
-                  <Text type="secondary">
-                    Next billing date: {new Date(usage.resetAt).toLocaleDateString()}
-                  </Text>
+                {usage.renderLimit > 0 && usage.renderCount >= usage.renderLimit ? (
+                  <Text type="danger">Render limit reached — upgrade for more renders.</Text>
+                ) : (
+                  <Text type="secondary">Total renders used (upgrade your plan for a higher limit).</Text>
                 )}
               </div>
             </Col>
@@ -254,7 +254,7 @@ export default function BillingPage() {
       </Card>
 
       {/* ── Renders by site (this billing period) ───────────────────────────── */}
-      <Card title="Renders by Site (this month)" style={{ marginBottom: 24 }}>
+      <Card title="Renders by Site (total)" style={{ marginBottom: 24 }}>
         <Table<{ siteId: string; domain: string; name: string | null; renders: number }>
           rowKey="siteId"
           loading={loadingUsage}

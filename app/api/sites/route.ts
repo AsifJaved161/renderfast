@@ -5,7 +5,7 @@ import { discoverAndQueueSitemap } from '@/lib/sitemap'
 import { drainQueue } from '@/lib/queue-drain'
 import { isRenderConfigured } from '@/lib/renderer'
 import { processDiagnosticsJob, isUrlOnDomain } from '@/lib/diagnostics-worker'
-import { isRenderableUrl } from '@/lib/url-utils'
+import { isRenderableUrl, normalizeDomain } from '@/lib/url-utils'
 import { getOpsConfig } from '@/lib/app-config'
 import type { Plan } from '@/lib/supabase'
 
@@ -96,7 +96,10 @@ export async function POST(req: NextRequest) {
     if (!uid) return NextResponse.json({ error: 'x-user-id required' }, { status: 401 })
 
     const body = await req.json().catch(() => ({}))
-    const { domain, name, integration_type } = body
+    const { name, integration_type } = body
+    // Normalize (lowercase, strip protocol/path/www) so the stored domain always
+    // matches the lowercase hostname the proxy resolves for incoming bot hits.
+    const domain = normalizeDomain(body.domain ?? '')
     if (!domain || !DOMAIN_RE.test(domain)) {
       return NextResponse.json({ error: 'Invalid domain format' }, { status: 400 })
     }
