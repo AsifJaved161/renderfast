@@ -204,6 +204,7 @@ export function LineChart({
   fill = false,
   showLegend = true,
   showDots = true,
+  showValueLabels = false,
 }: {
   series: LineSeries[]
   labels: string[]
@@ -212,6 +213,7 @@ export function LineChart({
   fill?: boolean
   showLegend?: boolean
   showDots?: boolean
+  showValueLabels?: boolean
 }) {
   const W = 760
   const H = height
@@ -295,10 +297,34 @@ export function LineChart({
               vectorEffect="non-scaling-stroke"
             />
             {showDots &&
+              s.points.map((v, i) => {
+                const isLast = i === s.points.length - 1
+                return (
+                  <circle
+                    key={i}
+                    cx={x(i)}
+                    cy={y(v)}
+                    r={isLast ? 4 : 3}
+                    fill={isLast ? '#ffffff' : s.color}
+                    stroke={s.color}
+                    strokeWidth={isLast ? 2.5 : 0}
+                    vectorEffect="non-scaling-stroke"
+                  >
+                    <title>{`${labels[i]} — ${s.label}: ${v.toLocaleString()}${unit}`}</title>
+                  </circle>
+                )
+              })}
+            {showValueLabels &&
               s.points.map((v, i) => (
-                <circle key={i} cx={x(i)} cy={y(v)} r={2.5} fill={s.color}>
-                  <title>{`${labels[i]} — ${s.label}: ${v.toLocaleString()}${unit}`}</title>
-                </circle>
+                <text
+                  key={`lbl-${i}`}
+                  x={x(i)}
+                  y={Math.max(padT + 10, y(v) - 8)}
+                  textAnchor="middle"
+                  style={{ fontSize: 11, fill: s.color, fontWeight: 700 }}
+                >
+                  {v.toLocaleString()}
+                </text>
               ))}
           </g>
         )
@@ -391,8 +417,7 @@ export function MetricTilesChart({
         })}
       </div>
 
-      {/* chart (only active series) — clean lines, no fill/dots, like GSC */}
-      <LineChart labels={labels} series={shown} height={height} showLegend={false} showDots={false} />
+      <LineChart labels={labels} series={shown} height={height} showLegend={false} />
     </div>
   )
 }

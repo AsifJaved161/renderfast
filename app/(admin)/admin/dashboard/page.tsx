@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Row, Col, Card, Statistic, Button, Typography, Skeleton, List, Tag, Space, Divider } from 'antd'
+import { Row, Col, Card, Statistic, Button, Typography, Skeleton, List, Tag, Space, Divider, Segmented } from 'antd'
 import {
   TeamOutlined,
   DollarOutlined,
@@ -32,6 +32,39 @@ interface Stats {
   revenue_trend: { date: string; amount: number }[]
 }
 
+const RENDER_RANGE_DAYS: Record<string, number> = { '3d': 3, '7d': 7, '30d': 30, '6m': 180, '1y': 365 }
+
+// Bucket daily rows into weekly/monthly so the line chart stays readable for
+// long ranges (180 or 365 days → many overlapping x-axis labels otherwise).
+function bucketTrend(trend: { date: string; count: number }[]): { labels: string[]; points: number[] } {
+  const monthly = trend.length > 140
+  const weekly = trend.length > 31
+  if (!weekly) {
+    return {
+      labels: trend.map((t) => t.date.slice(5)),
+      points: trend.map((t) => t.count),
+    }
+  }
+  const buckets = new Map<string, number>()
+  for (const t of trend) {
+    let key: string
+    if (monthly) {
+      key = t.date.slice(0, 7)
+    } else {
+      const d = new Date(t.date + 'T00:00:00Z')
+      const dow = d.getUTCDay() || 7
+      d.setUTCDate(d.getUTCDate() - (dow - 1))
+      key = d.toISOString().slice(0, 10)
+    }
+    buckets.set(key, (buckets.get(key) ?? 0) + t.count)
+  }
+  const sorted = [...buckets.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  return {
+    labels: sorted.map(([k]) => (monthly ? k : k.slice(5))),
+    points: sorted.map(([, v]) => v),
+  }
+}
+
 const PLAN_COLORS: Record<string, string> = {
   free: '#8c8c8c',
   starter: '#1677ff',
@@ -44,6 +77,9 @@ export default function AdminDashboardPage() {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<Stats | null>(null)
   const [logs, setLogs] = useState<any[]>([])
+  const [renderRange, setRenderRange] = useState<string>('30d')
+  const [renderTrend, setRenderTrend] = useState<{ date: string; count: number }[]>([])
+  const [trendLoading, setTrendLoading] = useState(false)
 
   useEffect(() => {
     // Load stats and logs INDEPENDENTLY — a failure in one must not blank out the
@@ -52,7 +88,10 @@ export default function AdminDashboardPage() {
     fetch('/api/admin/stats')
       .then((r) => r.json())
       .then((s) => {
-        if (!s.error) setStats(s)
+        if (!s.error) {
+          setStats(s)
+          setRenderTrend(s.renders_trend ?? [])
+        }
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -62,6 +101,20 @@ export default function AdminDashboardPage() {
       .then((l) => setLogs(l.logs ?? []))
       .catch(() => setLogs([]))
   }, [])
+
+  // Re-fetch only the renders trend when the range changes (avoids re-running
+  // the full stats query — users, revenue, Stripe — just for the chart).
+  useEffect(() => {
+    const days = RENDER_RANGE_DAYS[renderRange] ?? 30
+    if (days === 30 && renderTrend.length > 0) return // initial load already covers 30d
+    setTrendLoading(true)
+    fetch(`/api/admin/renders-trend?days=${days}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.trend) setRenderTrend(d.trend) })
+      .catch(() => {})
+      .finally(() => setTrendLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renderRange])
 
   function downloadReport() {
     if (!stats) return
@@ -151,12 +204,29 @@ export default function AdminDashboardPage() {
           </Card>
         </Col>
         <Col xs={24} lg={12}>
-          <Card title={<span style={{ color: '#1f2937' }}>Renders (30d)</span>}>
-            <LineChart
-              labels={stats.renders_trend.map((t) => t.date.slice(5))}
-              series={[{ label: 'Renders', color: '#722ed1', points: stats.renders_trend.map((t) => t.count) }]}
-              fill
-            />
+          <Card
+            title={<span style={{ color: '#1f2937' }}>Renders</span>}
+            extra={
+              <Segmented
+                size="small"
+                value={renderRange}
+                onChange={(v) => setRenderRange(v as string)}
+                options={['3d', '7d', '30d', '6m', '1y']}
+              />
+            }
+          >
+            {trendLoading ? (
+              <Skeleton active paragraph={{ rows: 4 }} />
+            ) : (() => {
+              const { labels, points } = bucketTrend(renderTrend)
+              return (
+                <LineChart
+                  labels={labels}
+                  series={[{ label: 'Renders', color: '#722ed1', points }]}
+                  fill
+                />
+              )
+            })()}
           </Card>
         </Col>
       </Row>

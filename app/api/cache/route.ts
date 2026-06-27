@@ -80,23 +80,33 @@ export async function GET(req: NextRequest) {
     ]
     const freshness = FRESHNESS.map((b) => ({ label: b.label, count: 0 }))
 
+    // Pages cached per day — last 30 days (computed from already-fetched rows,
+    // no extra DB query needed).
+    const DAY_MS = 86400_000
+    const trendBuckets: Record<string, number> = {}
+    for (let i = 29; i >= 0; i--) {
+      trendBuckets[new Date(Date.now() - i * DAY_MS).toISOString().slice(0, 10)] = 0
+    }
+
     let totalSizeBytes = 0
-    let ttlSum = 0
-    let ttlCount = 0
+    let expiringCount = 0
     const now = Date.now()
+    const in24h = now + 86400_000
     for (const r of rows ?? []) {
       totalSizeBytes += r.html_size_bytes ?? 0
-      if (r.expires_at && r.cached_at) {
-        ttlSum += new Date(r.expires_at).getTime() - new Date(r.cached_at).getTime()
-        ttlCount++
+      if (r.expires_at) {
+        const exp = new Date(r.expires_at).getTime()
+        if (exp > now && exp <= in24h) expiringCount++
       }
       if (r.cached_at) {
         const ageDays = (now - new Date(r.cached_at).getTime()) / 86400_000
         const idx = FRESHNESS.findIndex((b) => ageDays < b.max)
         if (idx >= 0) freshness[idx].count++
+        const dayKey = r.cached_at.slice(0, 10)
+        if (dayKey in trendBuckets) trendBuckets[dayKey]++
       }
     }
-    const avgTtlHours = ttlCount ? ttlSum / ttlCount / 3_600_000 : 0
+    const cachedByDay = Object.entries(trendBuckets).map(([date, count]) => ({ date, count }))
 
     // Hit rate from the last 30 days of renders.
     const since = new Date(Date.now() - 30 * 86400_000).toISOString()
@@ -119,7 +129,7 @@ export async function GET(req: NextRequest) {
     const hitRate = totalRenders ? Math.round(((hits ?? 0) / totalRenders) * 100) : 0
 
     return NextResponse.json({
-      summary: { total: count ?? 0, totalSizeBytes, avgTtlHours, hitRate, freshness },
+      summary: { total: count ?? 0, totalSizeBytes, expiringCount, hitRate, freshness, cachedByDay },
     })
   }
 

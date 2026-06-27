@@ -26,11 +26,11 @@ import {
   DatabaseOutlined,
   HddOutlined,
   CheckCircleOutlined,
-  FieldTimeOutlined,
+  ClockCircleOutlined,
   ExportOutlined,
 } from '@ant-design/icons'
 import { StatTitle } from '@/components/ui/StatTitle'
-import { BarChart } from '@/components/charts/Charts'
+import { LineChart } from '@/components/charts/Charts'
 import { downloadCsv } from '@/lib/export-csv'
 import { useDashboard } from '@/lib/dashboard-context'
 
@@ -80,16 +80,18 @@ export default function CachePage() {
     summary: {
       total: number
       totalSizeBytes: number
-      avgTtlHours: number
+      expiringCount: number
       hitRate: number
       freshness?: { label: string; count: number }[]
+      cachedByDay?: { date: string; count: number }[]
     }
   }>(`/api/cache?${sumParams}`)
 
   const rows = listData?.data ?? []
   const total = listData?.total ?? 0
-  const summary = sumData?.summary ?? { total: 0, totalSizeBytes: 0, avgTtlHours: 0, hitRate: 0, freshness: [] }
+  const summary = sumData?.summary ?? { total: 0, totalSizeBytes: 0, expiringCount: 0, hitRate: 0, freshness: [], cachedByDay: [] }
   const freshness = summary.freshness ?? []
+  const cachedByDay = summary.cachedByDay ?? []
 
   // Revalidate both the list and the summary after any mutation.
   const reload = () => Promise.all([mutateList(), mutateSummary()])
@@ -101,7 +103,7 @@ export default function CachePage() {
   // ── Real aggregate stats (whole cache, not just this page) ─────────────────
   const totalSizeKb = summary.totalSizeBytes / 1024
   const hitRate = summary.hitRate
-  const avgTtl = summary.avgTtlHours
+  const expiringCount = summary.expiringCount ?? 0
 
   async function refreshOne(url: string) {
     setBusy(true)
@@ -287,18 +289,46 @@ export default function CachePage() {
         </Col>
         <Col xs={12} lg={6}>
           <Card>
-            <Statistic title={<StatTitle hint="Average time a cached page stays fresh before it is re-rendered.">Avg TTL</StatTitle>} value={avgTtl} precision={1} suffix="h" prefix={<FieldTimeOutlined style={{ color: BRAND }} />} />
+            <Statistic
+              title={<StatTitle hint="Cached pages expiring in the next 24 hours — consider refreshing these to keep bots served fresh content.">Expiring Soon</StatTitle>}
+              value={expiringCount}
+              suffix="pages"
+              prefix={<ClockCircleOutlined style={{ color: expiringCount > 0 ? '#faad14' : BRAND }} />}
+              valueStyle={{ color: expiringCount > 0 ? '#faad14' : undefined }}
+            />
           </Card>
         </Col>
       </Row>
 
-      {/* ── Cache freshness distribution ────────────────────────────────────── */}
+      {/* ── Cache freshness + history ────────────────────────────────────────── */}
       {freshness.some((f) => f.count > 0) && (
         <Card
           title={<StatTitle hint="How long ago your cached pages were last rendered. Older pages are re-checked for changes and refreshed automatically.">Cache Freshness</StatTitle>}
           style={{ marginBottom: 20 }}
         >
-          <BarChart data={freshness.map((f) => ({ label: f.label, value: f.count }))} unit="pages" height={200} />
+          <LineChart
+            labels={freshness.map((f) => f.label)}
+            series={[{ label: 'Pages', color: '#13c2c2', points: freshness.map((f) => f.count) }]}
+            fill
+            height={200}
+            unit=" pages"
+            showValueLabels
+          />
+          {cachedByDay.some((d) => d.count > 0) && (
+            <>
+              <div style={{ borderTop: '1px solid #f0f0f0', margin: '20px 0 16px' }} />
+              <div style={{ color: '#6b7280', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
+                Pages Cached Per Day — Last 30 days
+              </div>
+              <LineChart
+                labels={cachedByDay.map((d) => d.date.slice(5))}
+                series={[{ label: 'Cached', color: '#722ed1', points: cachedByDay.map((d) => d.count) }]}
+                fill
+                height={160}
+                unit=" pages"
+              />
+            </>
+          )}
         </Card>
       )}
 

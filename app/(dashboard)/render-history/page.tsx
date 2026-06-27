@@ -22,7 +22,7 @@ import {
   DesktopOutlined,
   MobileOutlined,
 } from '@ant-design/icons'
-import { BarChart } from '@/components/charts/Charts'
+import { LineChart } from '@/components/charts/Charts'
 import { downloadCsv } from '@/lib/export-csv'
 import { useDashboard } from '@/lib/dashboard-context'
 
@@ -141,9 +141,10 @@ export default function RenderHistoryPage() {
           ) : trend.length === 0 ? (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No renders yet" />
           ) : (
-            <BarChart
-              data={trend.map((t) => ({ label: t.date.length > 5 ? t.date.slice(5) : t.date, value: t.renders }))}
-              unit="renders"
+            <LineChart
+              labels={trend.map((t) => (t.date.length > 5 ? t.date.slice(5) : t.date))}
+              series={[{ label: 'Renders', color: '#722ed1', points: trend.map((t) => t.renders) }]}
+              fill
               height={220}
             />
           )}

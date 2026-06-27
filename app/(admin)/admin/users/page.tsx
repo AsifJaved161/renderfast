@@ -20,9 +20,21 @@ import {
   Typography,
   Space,
   Popconfirm,
+  Tabs,
+  Divider,
+  Tooltip,
   message,
 } from 'antd'
-import { MoreOutlined, UserOutlined, ExportOutlined } from '@ant-design/icons'
+import {
+  MoreOutlined,
+  UserOutlined,
+  ExportOutlined,
+  ThunderboltOutlined,
+  LockOutlined,
+  TeamOutlined,
+  MailOutlined,
+  CopyOutlined,
+} from '@ant-design/icons'
 
 const BRAND = '#2da01d'
 const { Title, Text } = Typography
@@ -391,94 +403,291 @@ function UserDrawer({
 }) {
   const [detail, setDetail] = useState<any>(null)
   const [notes, setNotes] = useState('')
+  const [team, setTeam] = useState<any[]>([])
+  const [newPassword, setNewPassword] = useState('')
+  const [pwLoading, setPwLoading] = useState(false)
+  const [crawlingId, setCrawlingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!user) return
     setDetail(null)
+    setTeam([])
+    setNewPassword('')
     fetch(`/api/admin/users/${user.id}`)
       .then((r) => r.json())
-      .then((d) => {
-        setDetail(d)
-        setNotes(d.user?.notes ?? '')
-      })
+      .then((d) => { setDetail(d); setNotes(d.user?.notes ?? '') })
+      .catch(() => {})
+    fetch(`/api/admin/users/${user.id}/team`)
+      .then((r) => r.json())
+      .then((d) => setTeam(d.members ?? []))
       .catch(() => {})
   }, [user])
+
+  async function triggerRender(siteId: string, domain: string) {
+    setCrawlingId(siteId)
+    try {
+      const res = await fetch(`/api/admin/users/${user!.id}/trigger-render`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ site_id: siteId, domain }),
+      })
+      const data = await res.json()
+      if (res.ok) message.success(`Queued ${data.queued} URLs for rendering on ${domain}`)
+      else message.error(data.error ?? 'Failed to trigger render')
+    } catch { message.error('Failed') }
+    finally { setCrawlingId(null) }
+  }
+
+  async function passwordAction(action: 'reset_email' | 'set_password') {
+    setPwLoading(true)
+    try {
+      const body: Record<string, string> = { action }
+      if (action === 'set_password') {
+        if (newPassword.length < 8) { message.error('Password must be at least 8 characters'); return }
+        body.password = newPassword
+      }
+      const res = await fetch(`/api/admin/users/${user!.id}/password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        if (action === 'reset_email') {
+          message.success('Password reset email sent')
+          // If the API returned a link, copy it to clipboard for convenience.
+          if (data.link) {
+            navigator.clipboard?.writeText(data.link).catch(() => {})
+            message.info('Reset link also copied to clipboard')
+          }
+        } else {
+          message.success('Password updated successfully')
+          setNewPassword('')
+        }
+      } else message.error(data.error ?? 'Failed')
+    } catch { message.error('Failed') }
+    finally { setPwLoading(false) }
+  }
+
+  async function removeTeamMember(memberId: string) {
+    const res = await fetch(`/api/admin/users/${user!.id}/team?member_id=${memberId}`, { method: 'DELETE' })
+    if (res.ok) { message.success('Member removed'); setTeam((p) => p.filter((m) => m.id !== memberId)) }
+    else message.error('Failed to remove member')
+  }
+
+  async function changeTeamRole(memberId: string, role: string) {
+    const res = await fetch(`/api/admin/users/${user!.id}/team`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ member_id: memberId, role }),
+    })
+    if (res.ok) { message.success('Role updated'); setTeam((p) => p.map((m) => m.id === memberId ? { ...m, role } : m)) }
+    else message.error('Failed to update role')
+  }
 
   if (!user) return null
   const u = detail?.user ?? user
   const apiKeyMasked = u.api_key ? `${u.api_key.slice(0, 6)}••••••••` : '—'
 
   return (
-    <Drawer open width={600} onClose={onClose} title={u.email}>
-      <Descriptions column={1} size="small" bordered>
-        <Descriptions.Item label="Name">{u.full_name ?? '—'}</Descriptions.Item>
-        <Descriptions.Item label="Company">{u.company_name ?? '—'}</Descriptions.Item>
-        <Descriptions.Item label="Plan">
-          <Tag color={PLAN_COLOR[u.plan]}>{u.plan}</Tag>
-        </Descriptions.Item>
-        <Descriptions.Item label="API Key">{apiKeyMasked}</Descriptions.Item>
-        <Descriptions.Item label="Created">{new Date(u.created_at).toLocaleString()}</Descriptions.Item>
-      </Descriptions>
-
-      <div style={{ margin: '16px 0' }}>
-        <Text type="secondary">
-          Renders: {u.render_count?.toLocaleString()} / {u.render_limit?.toLocaleString()}
-        </Text>
-        <Progress
-          percent={u.render_limit ? Math.min(100, Math.round((u.render_count / u.render_limit) * 100)) : 0}
-          strokeColor={BRAND}
-        />
-      </div>
-
-      <Title level={5}>Sites</Title>
-      <Table
+    <Drawer open width={680} onClose={onClose} title={u.email} styles={{ body: { padding: '12px 24px' } }}>
+      <Tabs
         size="small"
-        rowKey="id"
-        pagination={false}
-        dataSource={detail?.sites ?? []}
-        columns={[
-          { title: 'Domain', dataIndex: 'domain' },
-          { title: 'Status', dataIndex: 'status', width: 90 },
+        items={[
+          {
+            key: 'profile',
+            label: <span><UserOutlined /> Profile</span>,
+            children: (
+              <>
+                <Descriptions column={1} size="small" bordered>
+                  <Descriptions.Item label="Name">{u.full_name ?? '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Company">{u.company_name ?? '—'}</Descriptions.Item>
+                  <Descriptions.Item label="Plan"><Tag color={PLAN_COLOR[u.plan]}>{u.plan}</Tag></Descriptions.Item>
+                  <Descriptions.Item label="API Key">{apiKeyMasked}</Descriptions.Item>
+                  <Descriptions.Item label="Created">{new Date(u.created_at).toLocaleString()}</Descriptions.Item>
+                </Descriptions>
+                <div style={{ margin: '16px 0' }}>
+                  <Text type="secondary">Renders: {u.render_count?.toLocaleString()} / {u.render_limit?.toLocaleString()}</Text>
+                  <Progress percent={u.render_limit ? Math.min(100, Math.round((u.render_count / u.render_limit) * 100)) : 0} strokeColor={BRAND} />
+                </div>
+                <Title level={5}>Admin Notes</Title>
+                <TextArea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
+                <Button size="small" style={{ marginTop: 8 }} onClick={() => onSaveNotes(u, notes)}>Save Notes</Button>
+                <Divider />
+                <Space style={{ width: '100%', justifyContent: 'space-between' }}>
+                  {u.is_banned ? (
+                    <Button onClick={() => onUnban(u)}>Unban</Button>
+                  ) : (
+                    <Button danger onClick={() => onBan(u)}>Ban</Button>
+                  )}
+                  <Button onClick={() => onChangePlan(u)}>Change Plan</Button>
+                  <Popconfirm title="Delete this account?" onConfirm={() => onDelete(u.id)} okButtonProps={{ danger: true }}>
+                    <Button danger type="primary">Delete</Button>
+                  </Popconfirm>
+                </Space>
+              </>
+            ),
+          },
+          {
+            key: 'rendering',
+            label: <span><ThunderboltOutlined /> Rendering</span>,
+            children: (
+              <>
+                <Title level={5}>Sites — Start Crawl</Title>
+                <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                  Immediately discover &amp; queue all pages on a site for rendering.
+                </Text>
+                <Table
+                  size="small"
+                  rowKey="id"
+                  pagination={false}
+                  dataSource={detail?.sites ?? []}
+                  locale={{ emptyText: 'No sites' }}
+                  columns={[
+                    { title: 'Domain', dataIndex: 'domain', ellipsis: true },
+                    { title: 'Status', dataIndex: 'status', width: 90 },
+                    {
+                      title: '',
+                      width: 120,
+                      render: (_: unknown, s: any) => (
+                        <Button
+                          size="small"
+                          type="primary"
+                          icon={<ThunderboltOutlined />}
+                          loading={crawlingId === s.id}
+                          disabled={!!crawlingId && crawlingId !== s.id}
+                          onClick={() => triggerRender(s.id, s.domain)}
+                        >
+                          Start Crawl
+                        </Button>
+                      ),
+                    },
+                  ]}
+                />
+                <Divider />
+                <Title level={5}>Recent Renders</Title>
+                <Table
+                  size="small"
+                  rowKey="id"
+                  pagination={false}
+                  dataSource={detail?.renders ?? []}
+                  locale={{ emptyText: 'No renders yet' }}
+                  columns={[
+                    { title: 'URL', dataIndex: 'url', ellipsis: true },
+                    { title: 'Code', dataIndex: 'status_code', width: 70 },
+                    { title: 'Cache', dataIndex: 'cache_hit', width: 70, render: (v: boolean) => v ? <Tag color="green">HIT</Tag> : <Tag>MISS</Tag> },
+                  ]}
+                />
+              </>
+            ),
+          },
+          {
+            key: 'password',
+            label: <span><LockOutlined /> Password</span>,
+            children: (
+              <>
+                <Title level={5}>Send Password Reset</Title>
+                <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                  Sends a password-reset email to <strong>{u.email}</strong>. The reset link is also copied to your clipboard.
+                </Text>
+                <Button
+                  icon={<MailOutlined />}
+                  loading={pwLoading}
+                  onClick={() => passwordAction('reset_email')}
+                >
+                  Send Reset Email
+                </Button>
+                <Divider />
+                <Title level={5}>Set New Password</Title>
+                <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                  Directly set a new password for this user. They will be able to log in with it immediately.
+                </Text>
+                <Space.Compact style={{ width: '100%' }}>
+                  <Input.Password
+                    placeholder="New password (min 8 chars)"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    onPressEnter={() => passwordAction('set_password')}
+                  />
+                  <Tooltip title="Copy to clipboard">
+                    <Button
+                      icon={<CopyOutlined />}
+                      onClick={() => navigator.clipboard?.writeText(newPassword).catch(() => {})}
+                      disabled={!newPassword}
+                    />
+                  </Tooltip>
+                  <Button
+                    type="primary"
+                    loading={pwLoading}
+                    disabled={newPassword.length < 8}
+                    onClick={() => passwordAction('set_password')}
+                  >
+                    Set Password
+                  </Button>
+                </Space.Compact>
+              </>
+            ),
+          },
+          {
+            key: 'team',
+            label: <span><TeamOutlined /> Team {team.length > 0 && <Tag style={{ marginLeft: 4 }}>{team.length}</Tag>}</span>,
+            children: (
+              <>
+                <Title level={5}>Team Members</Title>
+                <Text type="secondary" style={{ display: 'block', marginBottom: 12 }}>
+                  People this user has invited to share their account.
+                </Text>
+                <Table
+                  size="small"
+                  rowKey="id"
+                  pagination={false}
+                  dataSource={team}
+                  locale={{ emptyText: 'No team members' }}
+                  columns={[
+                    { title: 'Email', dataIndex: 'email', ellipsis: true },
+                    { title: 'Name', dataIndex: 'name', width: 120, render: (v: string | null) => v ?? '—' },
+                    {
+                      title: 'Role',
+                      dataIndex: 'role',
+                      width: 120,
+                      render: (role: string, m: any) => (
+                        <Select
+                          size="small"
+                          value={role}
+                          style={{ width: 100 }}
+                          onChange={(v) => changeTeamRole(m.id, v)}
+                          options={[
+                            { value: 'admin', label: 'Admin' },
+                            { value: 'member', label: 'Member' },
+                            { value: 'viewer', label: 'Viewer' },
+                          ]}
+                        />
+                      ),
+                    },
+                    {
+                      title: 'Status',
+                      dataIndex: 'status',
+                      width: 90,
+                      render: (s: string) => (
+                        <Tag color={s === 'active' ? 'green' : 'orange'}>{s}</Tag>
+                      ),
+                    },
+                    {
+                      title: '',
+                      width: 70,
+                      render: (_: unknown, m: any) => (
+                        <Popconfirm title="Remove this member?" onConfirm={() => removeTeamMember(m.id)} okButtonProps={{ danger: true }}>
+                          <Button size="small" danger>Remove</Button>
+                        </Popconfirm>
+                      ),
+                    },
+                  ]}
+                />
+              </>
+            ),
+          },
         ]}
       />
-
-      <Title level={5} style={{ marginTop: 16 }}>
-        Recent Renders
-      </Title>
-      <Table
-        size="small"
-        rowKey="id"
-        pagination={false}
-        dataSource={detail?.renders ?? []}
-        columns={[
-          { title: 'URL', dataIndex: 'url', ellipsis: true },
-          { title: 'Code', dataIndex: 'status_code', width: 70 },
-        ]}
-      />
-
-      <Title level={5} style={{ marginTop: 16 }}>
-        Admin Notes
-      </Title>
-      <TextArea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
-      <Button size="small" style={{ marginTop: 8 }} onClick={() => onSaveNotes(u, notes)}>
-        Save Notes
-      </Button>
-
-      <Space style={{ marginTop: 24, width: '100%', justifyContent: 'space-between' }}>
-        {u.is_banned ? (
-          <Button onClick={() => onUnban(u)}>Unban</Button>
-        ) : (
-          <Button danger onClick={() => onBan(u)}>
-            Ban
-          </Button>
-        )}
-        <Button onClick={() => onChangePlan(u)}>Change Plan</Button>
-        <Popconfirm title="Delete this account?" onConfirm={() => onDelete(u.id)} okButtonProps={{ danger: true }}>
-          <Button danger type="primary">
-            Delete
-          </Button>
-        </Popconfirm>
-      </Space>
     </Drawer>
   )
 }

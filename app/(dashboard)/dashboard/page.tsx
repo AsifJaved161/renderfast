@@ -19,6 +19,7 @@ import {
   Space,
   Alert,
   Tooltip,
+  Segmented,
 } from 'antd'
 import {
   ThunderboltOutlined,
@@ -28,7 +29,7 @@ import {
   InfoCircleOutlined,
 } from '@ant-design/icons'
 import type { Dayjs } from 'dayjs'
-import { DonutChart, Legend, BarChart, MetricTilesChart } from '@/components/charts/Charts'
+import { DonutChart, Legend, BarChart, LineChart, MetricTilesChart } from '@/components/charts/Charts'
 import { StatTitle } from '@/components/ui/StatTitle'
 import { BotCostWidget } from '@/components/dashboard/BotCostWidget'
 import { useDashboard } from '@/lib/dashboard-context'
@@ -170,6 +171,19 @@ export default function DashboardPage() {
     `/api/analytics?${params.toString()}`
   )
 
+  // Bot Activity chart has its own independent date filter.
+  const BOT_RANGE_DAYS: Record<string, number | null> = { '7d': 7, '30d': 30, '6m': 180, '1y': 365, 'All': null }
+  const [botRange, setBotRange] = useState('30d')
+  const botParams = new URLSearchParams()
+  if (siteId) botParams.set('site_id', siteId)
+  const botDaysNum = BOT_RANGE_DAYS[botRange]
+  botParams.set('start_date', botDaysNum !== null
+    ? new Date(Date.now() - botDaysNum * 86400_000).toISOString()
+    : '2020-01-01T00:00:00.000Z'
+  )
+  const { data: botRaw } = useSWR<Analytics>(`/api/analytics?${botParams.toString()}`)
+  const botTimeline = botRaw?.botTimeline ?? []
+
   const d = raw?.summary ? raw : EMPTY
   const hasActivity = d.summary.totalRenders > 0 || d.summary.totalBotRequests > 0
   // The cost widget is per-site; fall back to the first site when "All sites".
@@ -307,15 +321,25 @@ export default function DashboardPage() {
             {loading ? (
               <Skeleton active />
             ) : (
-              <MetricTilesChart
-                labels={d.botTimeline.map((t) => t.date.length > 5 ? t.date.slice(5) : t.date)}
-                series={[
-                  { label: 'Googlebot', color: BRAND, points: d.botTimeline.map((t) => t.googlebot) },
-                  { label: 'GPTBot', color: '#722ed1', points: d.botTimeline.map((t) => t.gptbot) },
-                  { label: 'Bingbot', color: '#1677ff', points: d.botTimeline.map((t) => t.bingbot) },
-                  { label: 'Others', color: '#faad14', points: d.botTimeline.map((t) => t.others) },
-                ]}
-              />
+              <>
+                <MetricTilesChart
+                  labels={botTimeline.map((t) => t.date.length > 5 ? t.date.slice(5) : t.date)}
+                  series={[
+                    { label: 'Googlebot', color: BRAND, points: botTimeline.map((t) => t.googlebot) },
+                    { label: 'GPTBot', color: '#722ed1', points: botTimeline.map((t) => t.gptbot) },
+                    { label: 'Bingbot', color: '#1677ff', points: botTimeline.map((t) => t.bingbot) },
+                    { label: 'Others', color: '#faad14', points: botTimeline.map((t) => t.others) },
+                  ]}
+                />
+                <div style={{ marginTop: 14, display: 'flex', justifyContent: 'center' }}>
+                  <Segmented
+                    size="small"
+                    value={botRange}
+                    onChange={(v) => setBotRange(v as string)}
+                    options={['7d', '30d', '6m', '1y', 'All']}
+                  />
+                </div>
+              </>
             )}
           </Card>
         </Col>
@@ -357,7 +381,12 @@ export default function DashboardPage() {
             {loading ? (
               <Skeleton active />
             ) : (
-              <BarChart data={renderTrendChart.data} unit="renders" />
+              <LineChart
+                labels={renderTrendChart.data.map((d) => d.label)}
+                series={[{ label: 'Renders', color: '#722ed1', points: renderTrendChart.data.map((d) => d.value) }]}
+                fill
+                height={220}
+              />
             )}
           </Card>
         </Col>
