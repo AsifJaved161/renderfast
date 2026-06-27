@@ -182,9 +182,11 @@ export default function DashboardPage() {
     : '2020-01-01T00:00:00.000Z'
   )
   const { data: botRaw } = useSWR<Analytics>(`/api/analytics?${botParams.toString()}`)
-  const botTimeline = botRaw?.botTimeline ?? []
 
   const d = raw?.summary ? raw : EMPTY
+  // Use botRaw when available (user changed filter); fall back to main fetch's
+  // botTimeline so the chart is never blank while the separate SWR is loading.
+  const botTimeline = botRaw?.botTimeline ?? d.botTimeline ?? []
   const hasActivity = d.summary.totalRenders > 0 || d.summary.totalBotRequests > 0
   // The cost widget is per-site; fall back to the first site when "All sites".
   const costSiteId = siteId ?? sites[0]?.id
@@ -309,10 +311,59 @@ export default function DashboardPage() {
         />
       </Row>
 
-      {/* ── Bot cost glance (links to full Bot Cost Insights) ───────────────── */}
-      <div style={{ marginBottom: 20 }}>
-        <BotCostWidget siteId={costSiteId} />
-      </div>
+      {/* ── Bots Served from Cache ──────────────────────────────────────────── */}
+      {(() => {
+        const totalCacheHits = d.renderTrend.reduce((s, t) => s + (t.cacheHits ?? 0), 0)
+        const rate = d.summary.cacheHitRate / 100
+        const breakdown = [
+          { label: 'Search Engines', value: Math.round(d.botTypeSplit.search * rate), color: BRAND },
+          { label: 'AI Crawlers',    value: Math.round(d.botTypeSplit.ai * rate),     color: '#722ed1' },
+          { label: 'Social Bots',    value: Math.round(d.botTypeSplit.social * rate),  color: '#1677ff' },
+          { label: 'Others',         value: Math.round(d.botTypeSplit.unknown * rate), color: '#bfbfbf' },
+        ]
+        return (
+          <Card style={{ marginBottom: 20, borderColor: BRAND, background: 'linear-gradient(135deg,#f6ffed 0%,#ffffff 100%)' }}>
+            {loading ? (
+              <Skeleton active paragraph={{ rows: 2 }} />
+            ) : (
+              <Row gutter={[32, 16]} align="middle">
+                <Col xs={24} sm={10}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+                    <ThunderboltFilled style={{ fontSize: 32, color: BRAND }} />
+                    <div>
+                      <div style={{ fontSize: 36, fontWeight: 700, color: BRAND, lineHeight: 1.1 }}>
+                        {totalCacheHits.toLocaleString()}
+                      </div>
+                      <StatTitle hint="Total bot requests served directly from cache — no fresh render was needed. Each one saves bandwidth and reduces origin load.">
+                        <Text style={{ fontSize: 14, color: '#374151' }}>Bots Served from Cache</Text>
+                      </StatTitle>
+                    </div>
+                  </div>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {d.summary.cacheHitRate}% of all bot traffic · {Math.max(0, d.summary.totalBotRequests - totalCacheHits).toLocaleString()} fresh renders
+                  </Text>
+                </Col>
+                <Col xs={24} sm={14}>
+                  {breakdown.map((b) => (
+                    <div key={b.label} style={{ marginBottom: 10 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                        <Text style={{ fontSize: 13 }}>{b.label}</Text>
+                        <Text strong style={{ fontSize: 13 }}>{b.value.toLocaleString()}</Text>
+                      </div>
+                      <Progress
+                        percent={totalCacheHits > 0 ? Math.round((b.value / totalCacheHits) * 100) : 0}
+                        strokeColor={b.color}
+                        showInfo={false}
+                        size="small"
+                      />
+                    </div>
+                  ))}
+                </Col>
+              </Row>
+            )}
+          </Card>
+        )
+      })()}
 
       {/* ── Charts row ──────────────────────────────────────────────────────── */}
       <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
@@ -370,23 +421,26 @@ export default function DashboardPage() {
           </Card>
         </Col>
         <Col xs={24} lg={6}>
-          <Card
-            title={<StatTitle hint="Pages rendered over time (each bar = a day; auto-grouped into weeks/months for long ranges). Hover a bar to see that period's render count.">Renders Trend</StatTitle>}
-            extra={
-              !loading && d.renderTrend.length > 31 ? (
-                <Text type="secondary" style={{ fontSize: 12 }}>{renderTrendChart.granularity}</Text>
-              ) : undefined
-            }
-          >
+          <Card title={<StatTitle hint="Share of bot requests served from cache (no re-render needed). Higher is better — means bots get instant responses.">Cache Hit Rate</StatTitle>}>
             {loading ? (
               <Skeleton active />
             ) : (
-              <LineChart
-                labels={renderTrendChart.data.map((d) => d.label)}
-                series={[{ label: 'Renders', color: '#722ed1', points: renderTrendChart.data.map((d) => d.value) }]}
-                fill
-                height={220}
-              />
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
+                <DonutChart
+                  data={[
+                    { label: 'Cache Hit', value: d.summary.cacheHitRate, color: BRAND },
+                    { label: 'Cache Miss', value: Math.max(0, 100 - d.summary.cacheHitRate), color: '#f0f0f0' },
+                  ]}
+                  centerLabel={`${d.summary.cacheHitRate}%`}
+                  centerSub="Hit Rate"
+                />
+                <Legend
+                  data={[
+                    { label: 'Cache Hit', value: d.summary.cacheHitRate, color: BRAND },
+                    { label: 'Cache Miss', value: Math.max(0, 100 - d.summary.cacheHitRate), color: '#d9d9d9' },
+                  ]}
+                />
+              </div>
             )}
           </Card>
         </Col>
@@ -422,6 +476,11 @@ export default function DashboardPage() {
           </Col>
         </Row>
       )}
+
+      {/* ── Bot cost glance (links to full Bot Cost Insights) ───────────────── */}
+      <div style={{ marginBottom: 20 }}>
+        <BotCostWidget siteId={costSiteId} />
+      </div>
 
       {/* ── Top pages table ─────────────────────────────────────────────────── */}
       <Card title={<StatTitle hint="Your most-crawled pages — total bot hits, how many distinct bots visited, whether the latest hit was served from cache, and when it was last crawled.">Top Pages</StatTitle>}>
