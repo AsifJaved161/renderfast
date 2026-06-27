@@ -122,7 +122,7 @@ function cleanHtml(html: string, url: string): string {
     // remove inline event handlers (onclick, onload, …)
     .replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
 
-  const baseTag = `<base href="${url}">`
+  const baseTag = `<base href="${url.replace(/"/g, '%22')}">`
   if (/<head[^>]*>/i.test(out)) {
     out = out.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`)
   } else {

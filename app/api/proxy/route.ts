@@ -204,7 +204,8 @@ export async function GET(req: NextRequest) {
     logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, true, serveMs, 200)
     logBotTraffic(owner.siteId, bot.botName, Buffer.byteLength(body, 'utf8'))
     // after() keeps this alive past the response so it can't be killed mid-flight.
-    after(() => revalidateChanged(domain, renderUrl, cached))
+    // Pass siteId so revalidation re-renders with the same per-site options.
+    after(() => revalidateChanged(domain, renderUrl, cached, owner.siteId))
     return serve(body, wantsMarkdown, 'HIT', 200)
   }
 
@@ -219,7 +220,7 @@ export async function GET(req: NextRequest) {
   const expiryDays = pathExpiryDays(renderUrl, settings.pathExpiry)
   const ttlSeconds = expiryDays != null ? expiryDays * 86400 : cacheTtlSeconds
   await setCachedPage(domain, renderUrl, html, hardCacheTtlDays * 86400) // persist; freshness via revalidation
-  await persistRender(owner, domain, renderParsed, html, renderTimeMs, statusCode, ttlSeconds)
+  await persistRender(owner, domain, renderParsed, html, renderTimeMs, statusCode, ttlSeconds, !!settings.emulateMobile)
   const body = toBody(html, wantsMarkdown)
   logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, false, renderTimeMs, statusCode)
   logBotTraffic(owner.siteId, bot.botName, Buffer.byteLength(body, 'utf8'))
@@ -299,7 +300,8 @@ async function persistRender(
   html: string,
   renderTimeMs: number,
   statusCode: number,
-  ttlSeconds: number = CACHE_TTL
+  ttlSeconds: number = CACHE_TTL,
+  isMobile = false
 ) {
   try {
     // Atomic bill (user + site) — no read-then-write race on concurrent misses.
@@ -316,7 +318,7 @@ async function persistRender(
         render_time_ms: renderTimeMs,
         cached_at: new Date().toISOString(),
         expires_at: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
-        is_mobile: false,
+        is_mobile: isMobile,
       },
       { onConflict: 'url_hash' }
     )
@@ -372,7 +374,16 @@ function logRender(
 // origin (cheaply) whether the page CHANGED. Only re-render if it did — an
 // unchanged page just gets its cache window + KV lifetime refreshed, saving the
 // expensive render entirely. Never blocks the served response.
-async function revalidateChanged(domain: string, url: string, cachedHtml: string): Promise<void> {
+//
+// siteId is passed so the re-render uses the same per-site options (mobile
+// viewport, custom UA, headers, blocked resources) as the initial render —
+// without it, revalidation would silently use global defaults.
+async function revalidateChanged(
+  domain: string,
+  url: string,
+  cachedHtml: string,
+  siteId: string
+): Promise<void> {
   try {
     const { data } = await supabaseAdmin
       .from('cache_entries')
@@ -400,8 +411,10 @@ async function revalidateChanged(domain: string, url: string, cachedHtml: string
       return
     }
 
-    // Content changed → re-render and refresh everything.
-    const { html, error, renderTimeMs, statusCode } = await renderPage(url)
+    // Content changed → re-render with the same per-site options as the initial render.
+    // Refresh settings in case they changed since the last render.
+    const freshSettings = await getSiteSettings(siteId)
+    const { html, error, renderTimeMs, statusCode } = await renderPage(url, toRenderOptions(freshSettings))
     if (!error && html) {
       await setCachedPage(domain, url, html, hardTtl)
       const v = await captureValidators(url)
@@ -413,6 +426,7 @@ async function revalidateChanged(domain: string, url: string, cachedHtml: string
           html_size_bytes: Buffer.byteLength(html, 'utf8'),
           render_time_ms: renderTimeMs,
           status_code: statusCode,
+          is_mobile: !!freshSettings.emulateMobile,
           ...(v ?? {}),
         })
         .eq('url', url)

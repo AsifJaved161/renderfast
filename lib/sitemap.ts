@@ -81,6 +81,19 @@ async function discoverSitemapUrls(domain: string): Promise<string[]> {
   return Array.from(new Set(found))
 }
 
+// Guard against SSRF: only fetch child sitemaps whose hostname matches the
+// registered site domain (www-insensitive). A malicious robots.txt / sitemap
+// index could otherwise list an internal-IP child sitemap URL.
+function isSameDomain(url: string, domain: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase().replace(/^www\./, '')
+    const bare = domain.toLowerCase().replace(/^www\./, '')
+    return host === bare
+  } catch {
+    return false
+  }
+}
+
 // Crawl the sitemap(s) for a domain → Map of normalized renderable URL → lastmod.
 // Follows one level of sitemap-index children. Returns the sitemap URL used.
 async function crawlSitemap(
@@ -112,6 +125,9 @@ async function crawlSitemap(
       if (add(pages)) usedSitemap = usedSitemap ?? sm
       for (const child of childMaps.slice(0, MAX_CHILD_SITEMAPS)) {
         if (urls.size >= maxUrls) break
+        // Only follow child sitemaps on the same domain — a sitemap index could
+        // otherwise redirect us to an internal network address (SSRF).
+        if (!isSameDomain(child, domain)) continue
         try {
           if (add(extractLocs(await fetchXml(child)).pages)) usedSitemap = usedSitemap ?? sm
         } catch {

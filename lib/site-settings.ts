@@ -46,6 +46,11 @@ export function normalizeSiteSettings(raw: unknown): SiteSettings {
           .map((r) => r as { pattern?: unknown; days?: unknown })
           .filter((r) => typeof r.pattern === 'string' && Number.isFinite(Number(r.days)))
           .map((r) => ({ pattern: String(r.pattern), days: Math.max(0, Math.round(Number(r.days))) }))
+          // Reject patterns that are too long or fail to compile — guards against ReDoS.
+          .filter((r) => {
+            if (r.pattern.length > 200) return false
+            try { new RegExp(r.pattern); return true } catch { return false }
+          })
       : [],
   }
 }
