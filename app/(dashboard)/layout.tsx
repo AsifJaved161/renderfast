@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   ConfigProvider,
   Layout,
@@ -14,6 +15,11 @@ import {
   Tag,
   Button,
   Tooltip,
+  Badge,
+  Popover,
+  List,
+  Empty,
+  Alert,
 } from 'antd'
 import type { MenuProps } from 'antd'
 import {
@@ -43,6 +49,7 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  BellOutlined,
 } from '@ant-design/icons'
 import { DashboardContext } from '@/lib/dashboard-context'
 import AppProviders from '@/components/providers/AppProviders'
@@ -189,6 +196,74 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
   const [user, setUser] = useState<DbUser | null>(null)
   const [sites, setSites] = useState<DbSite[]>([])
   const [selectedSiteId, setSelectedSiteIdState] = useState<string | null>(null)
+
+  // ── Notifications (localStorage-based, no backend) ──────────────────────────
+  const NOTIF_KEY = 'rf:notifications'
+  interface AppNotif { id: string; text: string; time: string; read: boolean }
+  const [notifs, setNotifs] = useState<AppNotif[]>([])
+  const [bellOpen, setBellOpen] = useState(false)
+
+  // Load from localStorage once on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(NOTIF_KEY)
+      if (raw) setNotifs(JSON.parse(raw))
+    } catch { /* ignore */ }
+  }, [])
+
+  // Listen for notifications pushed from other parts of the app (same tab)
+  useEffect(() => {
+    function onNotifUpdate() {
+      try {
+        const raw = localStorage.getItem(NOTIF_KEY)
+        if (raw) setNotifs(JSON.parse(raw))
+      } catch { /* ignore */ }
+    }
+    window.addEventListener('rf-notif-update', onNotifUpdate)
+    return () => window.removeEventListener('rf-notif-update', onNotifUpdate)
+  }, [NOTIF_KEY])
+
+
+  // Persist whenever notifs change
+  useEffect(() => {
+    try {
+      localStorage.setItem(NOTIF_KEY, JSON.stringify(notifs))
+    } catch { /* ignore */ }
+  }, [notifs])
+
+  const unreadCount = notifs.filter((n) => !n.read).length
+
+  function markAllRead() {
+    setNotifs((prev) => prev.map((n) => ({ ...n, read: true })))
+  }
+
+  // ── WordPress plugin reminder ───────────────────────────────────────────────
+  // Shows a banner if user marked a site as WordPress but hasn't connected the
+  // plugin yet. Dismissed permanently via localStorage.
+  const WP_KEY = 'rf:wordpress-sites'
+  const WP_DISMISS_KEY = 'rf:wp-reminder-dismissed'
+  const [showWpReminder, setShowWpReminder] = useState(false)
+
+  useEffect(() => {
+    try {
+      // If user already dismissed, never show again
+      if (localStorage.getItem(WP_DISMISS_KEY) === '1') return
+
+      const wpSiteIds: string[] = JSON.parse(localStorage.getItem(WP_KEY) || '[]')
+      if (wpSiteIds.length === 0) return
+
+      // Check if any of those WordPress sites still lack the plugin connection
+      const hasUnconnected = sites.some(
+        (s) => wpSiteIds.includes(s.id) && s.integration_type !== 'wordpress'
+      )
+      setShowWpReminder(hasUnconnected)
+    } catch { /* ignore */ }
+  }, [sites])
+
+  function dismissWpReminder() {
+    setShowWpReminder(false)
+    try { localStorage.setItem(WP_DISMISS_KEY, '1') } catch { /* ignore */ }
+  }
 
   // Persist site selection to localStorage.
   const setSelectedSiteId = useCallback((id: string | null) => {
@@ -506,6 +581,60 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
                   />
                 </Tooltip>
 
+                {/* 🔔 Notification Bell */}
+                <Popover
+                  open={bellOpen}
+                  onOpenChange={setBellOpen}
+                  trigger="click"
+                  placement="bottomRight"
+                  title={
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minWidth: 300 }}>
+                      <span style={{ fontWeight: 600 }}>Notifications</span>
+                      {unreadCount > 0 && (
+                        <Button type="link" size="small" style={{ padding: 0, color: BRAND }} onClick={markAllRead}>
+                          Mark all read
+                        </Button>
+                      )}
+                    </div>
+                  }
+                  content={
+                    notifs.length === 0 ? (
+                      <Empty description="No notifications yet" image={Empty.PRESENTED_IMAGE_SIMPLE} style={{ margin: '12px 0' }} />
+                    ) : (
+                      <List
+                        style={{ maxHeight: 360, overflowY: 'auto', minWidth: 300 }}
+                        dataSource={[...notifs].reverse()}
+                        renderItem={(n) => (
+                          <List.Item
+                            style={{
+                              padding: '8px 0',
+                              borderBottom: '1px solid #f0f0f0',
+                              opacity: n.read ? 0.55 : 1,
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontSize: 13, color: n.read ? '#888' : '#1f2937' }}>
+                                {!n.read && <span style={{ color: BRAND, marginRight: 6 }}>●</span>}
+                                {n.text}
+                              </div>
+                              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>{n.time}</div>
+                            </div>
+                          </List.Item>
+                        )}
+                      />
+                    )
+                  }
+                >
+                  <Badge count={unreadCount} size="small" offset={[-2, 2]}>
+                    <Button
+                      type="text"
+                      icon={<BellOutlined style={{ fontSize: 17, color: c.sub }} />}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      aria-label="Notifications"
+                    />
+                  </Badge>
+                </Popover>
+
                 {/* Avatar + dropdown */}
                 <Dropdown menu={{ items: userMenu, onClick: onUserMenu }} trigger={['click']} placement="bottomRight">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -525,7 +654,37 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
             </Header>
 
             <Content style={{ background: c.contentBg }}>
-              <main style={{ padding: 24, minHeight: '100vh', overflow: 'auto' }}>{children}</main>
+              <main style={{ padding: 24, minHeight: '100vh', overflow: 'auto' }}>
+                {showWpReminder && (
+                  <Alert
+                    type="info"
+                    showIcon
+                    closable
+                    onClose={dismissWpReminder}
+                    style={{ marginBottom: 16 }}
+                    message="Install the WordPress plugin for the best experience"
+                    description={
+                      <div>
+                        <p style={{ margin: '4px 0 8px' }}>
+                          Your WordPress site is caching pages, but the plugin makes it <strong>fully automatic</strong>:
+                        </p>
+                        <ul style={{ margin: '0 0 8px', paddingLeft: 20 }}>
+                          <li>✅ <strong>Zero code</strong> — one-click install from WordPress admin</li>
+                          <li>✅ <strong>Auto-detects bots</strong> — serves prerendered HTML to crawlers</li>
+                          <li>✅ <strong>Instant cache refresh</strong> — updates cache when you publish/edit posts</li>
+                          <li>✅ <strong>No server config needed</strong> — no Cloudflare, no Nginx rules</li>
+                        </ul>
+                        <Link href="/integration-wizard">
+                          <Button type="primary" size="small" style={{ background: BRAND, borderColor: BRAND }}>
+                            Go to Integration Guide
+                          </Button>
+                        </Link>
+                      </div>
+                    }
+                  />
+                )}
+                {children}
+              </main>
             </Content>
           </Layout>
         </Layout>

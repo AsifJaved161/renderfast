@@ -16,6 +16,8 @@ import {
   Tooltip,
   Skeleton,
   Typography,
+  Checkbox,
+  Alert,
   message,
 } from 'antd'
 import {
@@ -81,7 +83,7 @@ export default function DomainManagerPage() {
     if (error) message.error('Failed to load sites')
   }, [error])
 
-  async function addDomain(values: { domain: string; name: string }) {
+  async function addDomain(values: { domain: string; name: string; is_wordpress?: boolean }) {
     // Instant duplicate check against already-loaded sites (www-tolerant).
     const normalized = values.domain.trim().toLowerCase().replace(/^www\./, '')
     if (sites.some((s) => s.domain.toLowerCase().replace(/^www\./, '') === normalized)) {
@@ -100,19 +102,49 @@ export default function DomainManagerPage() {
         message.error(data.error ?? 'Failed to add site')
         return
       }
-      message.success('Site added')
+      message.success('✅ Site added & is now Active! Processing has started.')
       setAddOpen(false)
       form.resetFields()
       await mutate()
       // Sitemap auto-discovery + URL queueing now runs server-side (see POST /api/sites).
       if (data.site?.id) {
-        message.info('Fetching sitemap — URLs will appear in the Sitemaps & Caching Queue sections.')
+        message.info('🚀 Sitemap is being fetched and pages are queued for rendering in the background.')
+
+        // Save WordPress flag so layout can show plugin reminder later
+        if (values.is_wordpress) {
+          try {
+            const WP_KEY = 'rf:wordpress-sites'
+            const wpSites: string[] = JSON.parse(localStorage.getItem(WP_KEY) || '[]')
+            if (!wpSites.includes(data.site.id)) wpSites.push(data.site.id)
+            localStorage.setItem(WP_KEY, JSON.stringify(wpSites))
+          } catch { /* ignore */ }
+        }
+
+        // Push notifications to the bell icon (localStorage-based, no backend needed)
+        try {
+          const NOTIF_KEY = 'rf:notifications'
+          const existing = JSON.parse(localStorage.getItem(NOTIF_KEY) || '[]')
+          const now = new Date().toLocaleString('en-PK', { hour: '2-digit', minute: '2-digit', hour12: true, day: '2-digit', month: 'short' })
+          const domain = data.site.domain
+          const newNotifs = [
+            ...existing,
+            { id: `${Date.now()}-1`, text: `✅ ${domain} added & is now Active.`, time: now, read: false },
+            { id: `${Date.now()}-2`, text: `🚀 Sitemap fetching started for ${domain}. Pages are being queued for rendering.`, time: now, read: false },
+            { id: `${Date.now()}-3`, text: `🔍 Bot Visibility scan will run automatically for ${domain}. Check the Bot Visibility page for health stats.`, time: now, read: false },
+          ]
+          localStorage.setItem(NOTIF_KEY, JSON.stringify(newNotifs))
+          // Notify the bell icon in the same tab to refresh
+          window.dispatchEvent(new Event('rf-notif-update'))
+        } catch { /* ignore storage errors */ }
+
+
         router.push(`/domain-manager/${data.site.id}`)
       }
     } finally {
       setAdding(false)
     }
   }
+
 
   const atLimit = limit !== null && sites.length >= limit
   const open = (id: string) => router.push(`/domain-manager/${id}`)
@@ -291,6 +323,22 @@ export default function DomainManagerPage() {
           </Form.Item>
           <Form.Item name="name" label="Site name" rules={[{ required: true, message: 'Enter a name' }]}>
             <Input placeholder="My Website" size="large" />
+          </Form.Item>
+          <Form.Item name="is_wordpress" valuePropName="checked" style={{ marginBottom: 8 }}>
+            <Checkbox>Is your website on WordPress?</Checkbox>
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.is_wordpress !== cur.is_wordpress}>
+            {({ getFieldValue }) =>
+              getFieldValue('is_wordpress') ? (
+                <Alert
+                  type="success"
+                  showIcon
+                  style={{ marginBottom: 16 }}
+                  message="WordPress plugin recommended!"
+                  description="We have a one-click WordPress plugin that handles everything automatically — no code needed. After adding your site, download and install it from the Integration Guide."
+                />
+              ) : null
+            }
           </Form.Item>
         </Form>
       </Modal>

@@ -3,6 +3,10 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { getPlanLimits } from '@/lib/plan-utils'
 import { discoverAndQueueSitemap } from '@/lib/sitemap'
 import { drainQueue } from '@/lib/queue-drain'
+import { isRenderConfigured } from '@/lib/renderer'
+import { processDiagnosticsJob, isUrlOnDomain } from '@/lib/diagnostics-worker'
+import { isRenderableUrl } from '@/lib/url-utils'
+import { getOpsConfig } from '@/lib/app-config'
 import type { Plan } from '@/lib/supabase'
 
 export const runtime = 'nodejs'
@@ -124,7 +128,7 @@ export async function POST(req: NextRequest) {
         domain,
         name: name ?? domain,
         integration_type: integration_type ?? null,
-        status: 'pending',
+        status: 'active',
       })
       .select()
       .single()
@@ -150,6 +154,58 @@ export async function POST(req: NextRequest) {
         await drainQueue({ siteId: data.id, userId: uid, maxUrls: 12, deadlineMs: 35_000 })
       } catch (e) {
         console.error('[SITES_POST auto-sitemap]:', e)
+      }
+
+      // Auto-trigger Bot Visibility scan so user sees health stats immediately.
+      // Fire-and-forget: silently skip if rendering not configured or no URLs yet.
+      try {
+        if (!(await isRenderConfigured())) return
+
+        // Gather URLs from cache_entries or caching_queue for this site
+        const { maxRescanUrls } = await getOpsConfig()
+        let urls: string[] = []
+        const { data: cached } = await supabaseAdmin
+          .from('cache_entries')
+          .select('url')
+          .eq('site_id', data.id)
+          .order('cached_at', { ascending: false })
+          .limit(maxRescanUrls * 2)
+        urls = (cached ?? []).map((r: { url: string }) => r.url)
+
+        if (urls.length === 0) {
+          const { data: queued } = await supabaseAdmin
+            .from('caching_queue')
+            .select('url')
+            .eq('site_id', data.id)
+            .limit(maxRescanUrls * 2)
+          urls = (queued ?? []).map((r: { url: string }) => r.url)
+        }
+
+        urls = Array.from(
+          new Set(urls.filter((u) => isUrlOnDomain(u, data.domain) && isRenderableUrl(u)))
+        ).slice(0, maxRescanUrls)
+
+        if (urls.length === 0) return
+
+        // Create the diagnostics job
+        const { data: job, error: jobErr } = await supabaseAdmin
+          .from('diagnostics_jobs')
+          .insert({
+            site_id: data.id,
+            user_id: uid,
+            urls,
+            status: 'queued',
+            total_count: urls.length,
+            done_count: 0,
+          })
+          .select('id')
+          .single()
+
+        if (!jobErr && job) {
+          await processDiagnosticsJob(job.id)
+        }
+      } catch (e) {
+        console.error('[SITES_POST auto-diagnostics]:', e)
       }
     })
 
