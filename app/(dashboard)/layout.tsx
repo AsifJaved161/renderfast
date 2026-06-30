@@ -30,6 +30,7 @@ import {
   BulbFilled,
   HistoryOutlined,
   EyeOutlined,
+  RobotOutlined,
   DatabaseOutlined,
   ThunderboltOutlined,
   ApartmentOutlined,
@@ -52,6 +53,7 @@ import {
   BellOutlined,
 } from '@ant-design/icons'
 import { DashboardContext } from '@/lib/dashboard-context'
+import { requiredPlanFor, hasFeatureAccess, PLAN_LABEL, type FeatureAccessMap } from '@/lib/feature-access'
 import AppProviders from '@/components/providers/AppProviders'
 import { useClearUserCache } from '@/lib/client-session'
 import { AccountSwitcher } from '@/components/dashboard/AccountSwitcher'
@@ -117,6 +119,7 @@ const NAV: NavGroup[] = [
       { key: '/cdn-analytics', label: 'CDN Analytics', icon: <BarChartOutlined />, hint: 'Detailed crawler traffic & cache stats' },
       { key: '/insight', label: 'SEO Insights', icon: <BulbOutlined />, hint: 'Search Console clicks, impressions & position' },
       { key: '/bot-visibility', label: 'Bot Visibility', icon: <EyeOutlined />, hint: 'What AI crawlers actually see on your pages' },
+      { key: '/ai-visibility', label: 'AI Visibility Tracker', icon: <RobotOutlined />, hint: 'See if ChatGPT & Perplexity cite your brand for your target queries' },
       { key: '/bot-cost', label: 'Bot Cost Insights', icon: <DollarOutlined />, hint: 'Estimated bandwidth cost of bot traffic, per crawler' },
       { key: '/render-history', label: 'Render History', icon: <HistoryOutlined />, hint: 'Log of every page rendered for bots' },
     ],
@@ -196,6 +199,8 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
   const [user, setUser] = useState<DbUser | null>(null)
   const [sites, setSites] = useState<DbSite[]>([])
   const [selectedSiteId, setSelectedSiteIdState] = useState<string | null>(null)
+  // Admin-configured per-plan feature gating.
+  const [featureAccess, setFeatureAccess] = useState<FeatureAccessMap>({})
 
   // ── Notifications (localStorage-based, no backend) ──────────────────────────
   const NOTIF_KEY = 'rf:notifications'
@@ -286,6 +291,20 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
     }
   }, [])
 
+  // Load the per-plan feature-access map (admin-configured).
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/feature-access')
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => {
+        if (!cancelled) setFeatureAccess(d.access ?? {})
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   // Warm the router cache for every sidebar route so clicking opens instantly
   // (the sidebar navigates with router.push, which otherwise doesn't prefetch).
   useEffect(() => {
@@ -357,24 +376,34 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
   }, [router, clearUserCache])
 
   // ── Menu items (grouped) ────────────────────────────────────────────────────
-  const menuItems: MenuProps['items'] = useMemo(
-    () =>
-      NAV.map((group) => ({
-        type: 'group' as const,
-        key: group.title,
-        label: group.title,
-        children: group.items.map((item) => ({
+  const menuItems: MenuProps['items'] = useMemo(() => {
+    const userPlan: Plan = user?.plan ?? 'free'
+    return NAV.map((group) => ({
+      type: 'group' as const,
+      key: group.title,
+      label: group.title,
+      children: group.items.map((item) => {
+        const reqPlan = requiredPlanFor(item.key, featureAccess)
+        const itemLocked = !hasFeatureAccess(userPlan, reqPlan)
+        return {
           key: item.key,
           icon: item.icon,
           label: (
-            <Tooltip title={item.hint} placement="right" mouseEnterDelay={0.3}>
-              <span>{item.label}</span>
+            <Tooltip
+              title={itemLocked ? `${item.label} — available on the ${PLAN_LABEL[reqPlan]} plan` : item.hint}
+              placement="right"
+              mouseEnterDelay={0.3}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, opacity: itemLocked ? 0.65 : 1 }}>
+                {item.label}
+                {itemLocked && <LockOutlined style={{ fontSize: 11, color: '#9ca3af' }} />}
+              </span>
             </Tooltip>
           ),
-        })),
-      })),
-    []
-  )
+        }
+      }),
+    }))
+  }, [user, featureAccess])
 
   const selected = activeKey(pathname)
   const c = palette(mode)
@@ -385,6 +414,10 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
   const renderLimit = user?.render_limit ?? PLAN_LIMITS[plan].renders
   const usagePct = renderLimit > 0 ? Math.min(100, Math.round((rendersUsed / renderLimit) * 100)) : 0
   const usageColor = usagePct >= 90 ? '#ff4d4f' : usagePct >= 70 ? '#faad14' : BRAND
+
+  // ── Feature gating for the current page ──────────────────────────────────────
+  const requiredPlan = requiredPlanFor(selected, featureAccess)
+  const featureLocked = !hasFeatureAccess(plan, requiredPlan)
 
   // ── Avatar dropdown ─────────────────────────────────────────────────────────
   const userMenu: MenuProps['items'] = [
@@ -704,7 +737,54 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
                     }
                   />
                 )}
-                {children}
+                {featureLocked ? (
+                  <div style={{ position: 'relative', minHeight: '70vh' }}>
+                    {/* Blurred, non-interactive preview of the gated page */}
+                    <div style={{ filter: 'blur(6px)', pointerEvents: 'none', userSelect: 'none', opacity: 0.6 }} aria-hidden>
+                      {children}
+                    </div>
+                    {/* Upgrade overlay */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: 24,
+                      }}
+                    >
+                      <div
+                        style={{
+                          background: c.headerBg,
+                          border: `1px solid ${c.border}`,
+                          borderRadius: 12,
+                          padding: '32px 28px',
+                          maxWidth: 440,
+                          textAlign: 'center',
+                          boxShadow: '0 8px 30px rgba(0,0,0,0.12)',
+                        }}
+                      >
+                        <LockOutlined style={{ fontSize: 40, color: BRAND }} />
+                        <div style={{ fontSize: 18, fontWeight: 700, color: c.title, marginTop: 14 }}>
+                          {pageTitle(pathname)} is a {PLAN_LABEL[requiredPlan]} feature
+                        </div>
+                        <div style={{ color: c.sub, marginTop: 8, marginBottom: 20 }}>
+                          Your current plan is{' '}
+                          <Tag color={PLAN_COLOR[plan]} style={{ textTransform: 'capitalize', margin: 0 }}>{plan}</Tag>.
+                          Upgrade to the <b>{PLAN_LABEL[requiredPlan]}</b> plan or higher to unlock this feature.
+                        </div>
+                        <Link href="/dashboard/billing">
+                          <Button type="primary" size="large" style={{ background: BRAND, borderColor: BRAND }}>
+                            Upgrade plan →
+                          </Button>
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  children
+                )}
               </main>
             </Content>
           </Layout>

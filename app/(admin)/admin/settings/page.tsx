@@ -16,6 +16,7 @@ import {
   Divider,
   Skeleton,
   Switch,
+  Select,
   Tooltip,
   message,
 } from 'antd'
@@ -29,6 +30,7 @@ import {
   ExperimentOutlined,
   SaveOutlined,
   InfoCircleOutlined,
+  RobotOutlined,
 } from '@ant-design/icons'
 
 const BRAND = '#2da01d'
@@ -51,9 +53,30 @@ interface OpsValues {
   hardCacheTtlDays: number
   blockResources: boolean
 }
+interface SecretField {
+  set: boolean
+  source: string
+  preview: string
+}
+type AiEngineKey = 'chatgpt' | 'gemini' | 'claude' | 'grok' | 'perplexity'
+interface AiVisibilityData {
+  engines: Record<AiEngineKey, { primary: SecretField; secondary: SecretField }>
+  frequency: 'daily' | 'weekly' | 'monthly'
+  quotas: { free: number; starter: number; pro: number; agency: number }
+}
+
+// Engine display metadata for the admin settings card.
+const AI_ENGINES: { key: AiEngineKey; label: string; settingPrimary: string; settingSecondary: string; placeholder: string }[] = [
+  { key: 'chatgpt', label: 'ChatGPT (OpenAI)', settingPrimary: 'openai_api_key', settingSecondary: 'openai_api_key_2', placeholder: 'sk-…' },
+  { key: 'gemini', label: 'Gemini (Google)', settingPrimary: 'gemini_api_key', settingSecondary: 'gemini_api_key_2', placeholder: 'AIza…' },
+  { key: 'claude', label: 'Claude (Anthropic)', settingPrimary: 'claude_api_key', settingSecondary: 'claude_api_key_2', placeholder: 'sk-ant-…' },
+  { key: 'grok', label: 'Grok (xAI)', settingPrimary: 'grok_api_key', settingSecondary: 'grok_api_key_2', placeholder: 'xai-…' },
+  { key: 'perplexity', label: 'Perplexity (Sonar)', settingPrimary: 'perplexity_api_key', settingSecondary: 'perplexity_api_key_2', placeholder: 'pplx-…' },
+]
 interface SettingsData {
   cloudflare: CfField[]
   google: { set: boolean; source: string; preview: string }
+  aiVisibility: AiVisibilityData
   ops: {
     values: OpsValues
     defaults: OpsValues
@@ -103,6 +126,41 @@ export default function AdminSettingsPage() {
   const [ops, setOps] = useState<OpsValues>({ maxRescanUrls: 15, rescanConcurrency: 5, cacheTtlSeconds: 86400, sitemapMaxUrls: 500, renderTimeoutMs: 30000, queueThrottleMs: 1200, hardCacheTtlDays: 30, blockResources: true })
   // Google API key (Core Web Vitals) — only sent when a new value is typed.
   const [googleKey, setGoogleKey] = useState('')
+  // AI Visibility Tracker form state — typed-but-empty key inputs keyed by
+  // setting name (only sent when a new value is typed).
+  const [aiKeys, setAiKeys] = useState<Record<string, string>>({})
+  const [aiFreq, setAiFreq] = useState<'daily' | 'weekly' | 'monthly'>('weekly')
+  const [aiQuota, setAiQuota] = useState({ free: 0, starter: 5, pro: 10, agency: 50 })
+  const setAiKey = (k: string, v: string) => setAiKeys((prev) => ({ ...prev, [k]: v }))
+
+  async function saveAiVisibility() {
+    setSaving(true)
+    try {
+      const settings: Record<string, string> = {
+        ai_visibility_frequency: aiFreq,
+        ai_visibility_quota_free: String(aiQuota.free),
+        ai_visibility_quota_starter: String(aiQuota.starter),
+        ai_visibility_quota_pro: String(aiQuota.pro),
+        ai_visibility_quota_agency: String(aiQuota.agency),
+      }
+      // Only send keys the admin actually typed (blank = keep current).
+      for (const [k, v] of Object.entries(aiKeys)) {
+        if (v && v.trim()) settings[k] = v.trim()
+      }
+      const res = await fetch('/api/admin/settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings }),
+      })
+      if (res.ok) {
+        message.success('AI Visibility settings saved')
+        setAiKeys({})
+        load()
+      } else message.error('Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function saveGoogle() {
     setSaving(true)
@@ -134,6 +192,11 @@ export default function AdminSettingsPage() {
       setBrurl(find(K.brurl)?.value ?? '')
       setToken('') // never prefill the secret
       setOps(d.ops.values)
+      if (d.aiVisibility) {
+        setAiFreq(d.aiVisibility.frequency)
+        setAiQuota(d.aiVisibility.quotas)
+        setAiKeys({}) // never prefill secrets
+      }
     } catch {
       message.error('Failed to load settings')
     } finally {
@@ -387,6 +450,104 @@ export default function AdminSettingsPage() {
             />
             <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={saveGoogle} disabled={!googleKey} style={{ background: BRAND, borderColor: BRAND }}>
               Save key
+            </Button>
+          </Card>
+
+          {/* ── AI Visibility Tracker ───────────────────────────────────────── */}
+          <Card title={<Space><RobotOutlined /> AI Visibility Tracker</Space>} style={{ marginTop: 16 }}>
+            <Paragraph type="secondary" style={{ marginTop: 0 }}>
+              Shared answer-engine API keys used to check whether clients&apos; brands are
+              cited by ChatGPT, Gemini, Claude, Grok &amp; Perplexity. Each engine has
+              <b> two key slots</b> — if the first account hits its limit, the second is used
+              automatically. Per-plan <b>prompt quotas</b> cap API cost — set <b>Free = 0</b> to
+              keep this a paid feature.
+            </Paragraph>
+
+            {AI_ENGINES.map((eng) => {
+              const cur = data?.aiVisibility?.engines?.[eng.key]
+              return (
+                <div key={eng.key} style={{ marginBottom: 18, paddingBottom: 14, borderBottom: '1px solid #f0f0f0' }}>
+                  <Text strong style={{ display: 'block', marginBottom: 8 }}>{eng.label}</Text>
+                  <Row gutter={12}>
+                    <Col xs={24} md={12}>
+                      <label>
+                        <Space size={4}>
+                          <ApiOutlined /> Account 1 <SourceTag source={cur?.primary.source ?? 'unset'} />
+                          {cur?.primary.preview && <Text type="secondary" style={{ fontSize: 11 }}>{cur.primary.preview}</Text>}
+                        </Space>
+                      </label>
+                      <Input.Password
+                        value={aiKeys[eng.settingPrimary] ?? ''}
+                        onChange={(e) => setAiKey(eng.settingPrimary, e.target.value)}
+                        placeholder={cur?.primary.set ? 'leave blank to keep current' : eng.placeholder}
+                        style={{ marginTop: 4 }}
+                      />
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <label>
+                        <Space size={4}>
+                          <ApiOutlined /> Account 2 (failover) <SourceTag source={cur?.secondary.source ?? 'unset'} />
+                          {cur?.secondary.preview && <Text type="secondary" style={{ fontSize: 11 }}>{cur.secondary.preview}</Text>}
+                        </Space>
+                      </label>
+                      <Input.Password
+                        value={aiKeys[eng.settingSecondary] ?? ''}
+                        onChange={(e) => setAiKey(eng.settingSecondary, e.target.value)}
+                        placeholder={cur?.secondary.set ? 'leave blank to keep current' : 'optional 2nd account'}
+                        style={{ marginTop: 4 }}
+                      />
+                    </Col>
+                  </Row>
+                </div>
+              )
+            })}
+
+            <label>
+              <Space size={4}>
+                Scan frequency
+                <Tooltip title="How often clients' prompts should be re-checked. Daily is the most expensive (more API calls); weekly is a good balance.">
+                  <InfoCircleOutlined style={{ color: '#bfbfbf', fontSize: 12 }} />
+                </Tooltip>
+              </Space>
+            </label>
+            <div style={{ marginTop: 4, marginBottom: 16 }}>
+              <Select
+                value={aiFreq}
+                onChange={(v) => setAiFreq(v)}
+                style={{ width: 200 }}
+                options={[
+                  { value: 'daily', label: 'Daily (most $)' },
+                  { value: 'weekly', label: 'Weekly (recommended)' },
+                  { value: 'monthly', label: 'Monthly (cheapest)' },
+                ]}
+              />
+            </div>
+
+            <Text strong>Prompt quota per plan</Text>
+            <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>
+              Max prompts a client on each plan may track. 0 = locked for that plan.
+            </Text>
+            <Row gutter={[16, 12]}>
+              <Col xs={12} md={6}>
+                <Text>Free</Text>
+                <InputNumber min={0} max={500} value={aiQuota.free} onChange={(v) => setAiQuota({ ...aiQuota, free: v ?? 0 })} style={{ width: '100%' }} />
+              </Col>
+              <Col xs={12} md={6}>
+                <Text>Starter</Text>
+                <InputNumber min={0} max={500} value={aiQuota.starter} onChange={(v) => setAiQuota({ ...aiQuota, starter: v ?? 0 })} style={{ width: '100%' }} />
+              </Col>
+              <Col xs={12} md={6}>
+                <Text>Pro</Text>
+                <InputNumber min={0} max={500} value={aiQuota.pro} onChange={(v) => setAiQuota({ ...aiQuota, pro: v ?? 0 })} style={{ width: '100%' }} />
+              </Col>
+              <Col xs={12} md={6}>
+                <Text>Agency</Text>
+                <InputNumber min={0} max={500} value={aiQuota.agency} onChange={(v) => setAiQuota({ ...aiQuota, agency: v ?? 0 })} style={{ width: '100%' }} />
+              </Col>
+            </Row>
+
+            <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={saveAiVisibility} style={{ background: BRAND, borderColor: BRAND, marginTop: 16 }}>
+              Save AI Visibility
             </Button>
           </Card>
         </Col>

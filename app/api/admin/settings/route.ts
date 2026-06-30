@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdmin, logAdminAction, adminAuthError } from '@/lib/admin-auth'
-import { getDbSettings, getOpsConfig, clearConfigCache, SETTING_KEYS, OPS_DEFAULTS } from '@/lib/app-config'
+import { getDbSettings, getOpsConfig, getAiVisibilityConfig, clearConfigCache, SETTING_KEYS, OPS_DEFAULTS, AI_ENGINE_KEYS, AI_ENGINE_ORDER } from '@/lib/app-config'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const SECRET_KEYS = new Set<string>([SETTING_KEYS.cfApiToken])
+const SECRET_KEYS = new Set<string>([
+  SETTING_KEYS.cfApiToken,
+  SETTING_KEYS.openaiApiKey,
+  SETTING_KEYS.openaiApiKey2,
+  SETTING_KEYS.geminiApiKey,
+  SETTING_KEYS.geminiApiKey2,
+  SETTING_KEYS.claudeApiKey,
+  SETTING_KEYS.claudeApiKey2,
+  SETTING_KEYS.grokApiKey,
+  SETTING_KEYS.grokApiKey2,
+  SETTING_KEYS.perplexityApiKey,
+  SETTING_KEYS.perplexityApiKey2,
+])
 const ALLOWED = new Set<string>(Object.values(SETTING_KEYS))
 
 function mask(v: string): string {
@@ -34,6 +46,7 @@ export async function GET() {
 
     const db = await getDbSettings()
     const ops = await getOpsConfig()
+    const aiCfg = await getAiVisibilityConfig()
 
     // Cloudflare creds with source + masked secret.
     const cloudflare = [
@@ -104,9 +117,32 @@ export async function GET() {
       preview: gEff ? mask(gEff) : '',
     }
 
+    // AI Visibility Tracker — per-engine answer keys (masked, 2 slots each) + policy.
+    const secretField = (key: string, envName: string) => {
+      const dbVal = db[key] ?? ''
+      const envVal = env(envName)
+      const eff = dbVal || envVal
+      return { set: !!eff, source: dbVal ? 'db' : envVal ? 'env' : 'unset', preview: eff ? mask(eff) : '' }
+    }
+    const aiEngines = Object.fromEntries(
+      AI_ENGINE_ORDER.map((engine) => {
+        const k = AI_ENGINE_KEYS[engine]
+        return [engine, {
+          primary: secretField(k.primary, k.env),
+          secondary: secretField(k.secondary, k.env2),
+        }]
+      })
+    )
+    const aiVisibility = {
+      engines: aiEngines,
+      frequency: aiCfg.frequency,
+      quotas: aiCfg.quotas,
+    }
+
     return NextResponse.json({
       cloudflare,
       google,
+      aiVisibility,
       ops: {
         values: ops,
         defaults: OPS_DEFAULTS,

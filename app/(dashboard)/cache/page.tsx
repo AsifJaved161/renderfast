@@ -30,7 +30,6 @@ import {
   ExportOutlined,
 } from '@ant-design/icons'
 import { StatTitle } from '@/components/ui/StatTitle'
-import { LineChart } from '@/components/charts/Charts'
 import { downloadCsv } from '@/lib/export-csv'
 import { useDashboard } from '@/lib/dashboard-context'
 
@@ -82,16 +81,12 @@ export default function CachePage() {
       totalSizeBytes: number
       expiringCount: number
       hitRate: number
-      freshness?: { label: string; count: number }[]
-      cachedByDay?: { date: string; count: number }[]
     }
   }>(`/api/cache?${sumParams}`)
 
   const rows = listData?.data ?? []
   const total = listData?.total ?? 0
-  const summary = sumData?.summary ?? { total: 0, totalSizeBytes: 0, expiringCount: 0, hitRate: 0, freshness: [], cachedByDay: [] }
-  const freshness = summary.freshness ?? []
-  const cachedByDay = summary.cachedByDay ?? []
+  const summary = sumData?.summary ?? { total: 0, totalSizeBytes: 0, expiringCount: 0, hitRate: 0 }
 
   // Revalidate both the list and the summary after any mutation.
   const reload = () => Promise.all([mutateList(), mutateSummary()])
@@ -299,38 +294,6 @@ export default function CachePage() {
           </Card>
         </Col>
       </Row>
-
-      {/* ── Cache freshness + history ────────────────────────────────────────── */}
-      {freshness.some((f) => f.count > 0) && (
-        <Card
-          title={<StatTitle hint="How long ago your cached pages were last rendered. Older pages are re-checked for changes and refreshed automatically.">Cache Freshness</StatTitle>}
-          style={{ marginBottom: 20 }}
-        >
-          <LineChart
-            labels={freshness.map((f) => f.label)}
-            series={[{ label: 'Pages', color: '#13c2c2', points: freshness.map((f) => f.count) }]}
-            fill
-            height={200}
-            unit=" pages"
-            showValueLabels
-          />
-          {cachedByDay.some((d) => d.count > 0) && (
-            <>
-              <div style={{ borderTop: '1px solid #f0f0f0', margin: '20px 0 16px' }} />
-              <div style={{ color: '#6b7280', fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
-                Pages Cached Per Day — Last 30 days
-              </div>
-              <LineChart
-                labels={cachedByDay.map((d) => d.date.slice(5))}
-                series={[{ label: 'Cached', color: '#722ed1', points: cachedByDay.map((d) => d.count) }]}
-                fill
-                height={160}
-                unit=" pages"
-              />
-            </>
-          )}
-        </Card>
-      )}
 
       {/* ── Bulk actions bar ────────────────────────────────────────────────── */}
       {selected.length > 0 && (
