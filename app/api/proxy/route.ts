@@ -7,7 +7,10 @@ import { getOpsConfig } from '@/lib/app-config'
 import { normalizeUrl, isRenderableUrl } from '@/lib/url-utils'
 import { captureValidators, originChanged, fingerprint } from '@/lib/revalidate'
 import { getServableLlmsTxt } from '@/lib/llms-txt'
+import { getApprovedSchemas, injectSchemas, persistAlreadyPresent } from '@/lib/schema-inject'
+import { isSchemaEnabledForSite } from '@/lib/schema-settings'
 import { supabaseAdmin } from '@/lib/supabase'
+import type { Plan } from '@/lib/supabase'
 import { incrementRenderCounts } from '@/lib/render-billing'
 import { getSiteSettings, toRenderOptions, isExcludedPath, pathExpiryDays } from '@/lib/site-settings'
 
@@ -28,6 +31,7 @@ interface Owner {
   userId: string
   renderCount: number
   renderLimit: number
+  plan: Plan // owner's plan — drives the schema-markup feature gate
   status: string // 'active' | 'pending' | 'inactive' — 'inactive' = prerendering paused
 }
 
@@ -75,7 +79,7 @@ async function resolveOwnerFromDb(domain: string, token: string | null): Promise
 
   const { data: user } = await supabaseAdmin
     .from('users')
-    .select('render_count, render_limit')
+    .select('render_count, render_limit, plan')
     .eq('id', site.user_id)
     .maybeSingle()
 
@@ -85,6 +89,7 @@ async function resolveOwnerFromDb(domain: string, token: string | null): Promise
     userId: site.user_id,
     renderCount: user?.render_count ?? 0,
     renderLimit: user?.render_limit ?? 0,
+    plan: (user?.plan as Plan) ?? 'free',
     status: site.status ?? 'active',
   }
 }
@@ -200,7 +205,10 @@ export async function GET(req: NextRequest) {
     // Real time the bot waited to receive the cached page (KV fetch + serve) —
     // this is the "benefit" number shown to users, typically tens of ms.
     const serveMs = Date.now() - reqStart
-    const body = toBody(cached, wantsMarkdown)
+    // Inject approved schema into the served HTML (not into the cache itself).
+    // Markdown responses skip injection — JSON-LD is an HTML <head> concern.
+    const servedHtml = wantsMarkdown ? cached : await applySchemas(cached, owner.siteId, renderUrl, owner.plan)
+    const body = toBody(servedHtml, wantsMarkdown)
     logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, true, serveMs, 200)
     logBotTraffic(owner.siteId, bot.botName, Buffer.byteLength(body, 'utf8'))
     // after() keeps this alive past the response so it can't be killed mid-flight.
@@ -219,9 +227,11 @@ export async function GET(req: NextRequest) {
   // Per-path cache-expiry override (soft check window), else the platform default.
   const expiryDays = pathExpiryDays(renderUrl, settings.pathExpiry)
   const ttlSeconds = expiryDays != null ? expiryDays * 86400 : cacheTtlSeconds
-  await setCachedPage(domain, renderUrl, html, hardCacheTtlDays * 86400) // persist; freshness via revalidation
+  await setCachedPage(domain, renderUrl, html, hardCacheTtlDays * 86400) // persist RAW html; freshness via revalidation
   await persistRender(owner, domain, renderParsed, html, renderTimeMs, statusCode, ttlSeconds, !!settings.emulateMobile)
-  const body = toBody(html, wantsMarkdown)
+  // Inject approved schema into the served body only — the cache keeps the raw HTML.
+  const servedHtml = wantsMarkdown ? html : await applySchemas(html, owner.siteId, renderUrl, owner.plan)
+  const body = toBody(servedHtml, wantsMarkdown)
   logRender(owner, domain, renderUrl, bot, ua, req, wantsMarkdown, false, renderTimeMs, statusCode)
   logBotTraffic(owner.siteId, bot.botName, Buffer.byteLength(body, 'utf8'))
 
@@ -268,6 +278,29 @@ export async function GET(req: NextRequest) {
 // can be measured without re-running the markdown conversion.
 function toBody(html: string, wantsMarkdown: boolean): string {
   return wantsMarkdown ? htmlToMarkdown(html) : html
+}
+
+// Inject any approved/edited JSON-LD for this page into the HTML we're about to
+// serve. Operates on the SERVED string only (the cache still holds the raw,
+// un-injected HTML), so caching is completely unaffected — this just augments
+// the response. Skips types the page already declares (dedup) and persists the
+// resulting "already present" flags in the background for the dashboard.
+// Returns the original HTML untouched on any issue.
+async function applySchemas(html: string, siteId: string, url: string, plan: Plan): Promise<string> {
+  try {
+    // Platform gate (global switch + plan gate + per-site override). Disabled →
+    // serve the page untouched. Both reads are cached, so HITs stay fast.
+    if (!(await isSchemaEnabledForSite(siteId, plan))) return html
+    const rows = await getApprovedSchemas(siteId, url)
+    if (rows.length === 0) return html
+    const { html: out, flagUpdates } = injectSchemas(html, rows)
+    if (flagUpdates.length > 0) {
+      after(() => persistAlreadyPresent(siteId, url, flagUpdates))
+    }
+    return out
+  } catch {
+    return html // never block serving on schema injection
+  }
 }
 
 function serve(body: string, wantsMarkdown: boolean, cacheStatus: 'HIT' | 'MISS', status: number) {

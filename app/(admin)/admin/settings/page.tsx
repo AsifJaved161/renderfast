@@ -31,6 +31,7 @@ import {
   SaveOutlined,
   InfoCircleOutlined,
   RobotOutlined,
+  CodeOutlined,
 } from '@ant-design/icons'
 
 const BRAND = '#2da01d'
@@ -132,6 +133,24 @@ export default function AdminSettingsPage() {
   const [aiFreq, setAiFreq] = useState<'daily' | 'weekly' | 'monthly'>('weekly')
   const [aiQuota, setAiQuota] = useState({ free: 0, starter: 5, pro: 10, agency: 50 })
   const setAiKey = (k: string, v: string) => setAiKeys((prev) => ({ ...prev, [k]: v }))
+  // Schema Markup feature controls (platform_settings via /api/admin/schema-settings).
+  const [schemaEnabled, setSchemaEnabled] = useState(true)
+  const [schemaMinPlan, setSchemaMinPlan] = useState<'free' | 'starter' | 'pro' | 'agency'>('starter')
+
+  async function saveSchema() {
+    setSaving(true)
+    try {
+      const res = await fetch('/api/admin/schema-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: schemaEnabled, minPlan: schemaMinPlan }),
+      })
+      if (res.ok) message.success('Schema Markup settings saved')
+      else message.error('Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   async function saveAiVisibility() {
     setSaving(true)
@@ -196,6 +215,19 @@ export default function AdminSettingsPage() {
         setAiFreq(d.aiVisibility.frequency)
         setAiQuota(d.aiVisibility.quotas)
         setAiKeys({}) // never prefill secrets
+      }
+      // Schema Markup config lives in platform_settings (separate endpoint).
+      try {
+        const sr = await fetch('/api/admin/schema-settings')
+        if (sr.ok) {
+          const sd = await sr.json()
+          if (sd.config) {
+            setSchemaEnabled(!!sd.config.enabled)
+            setSchemaMinPlan(sd.config.minPlan ?? 'starter')
+          }
+        }
+      } catch {
+        /* keep defaults */
       }
     } catch {
       message.error('Failed to load settings')
@@ -548,6 +580,48 @@ export default function AdminSettingsPage() {
 
             <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={saveAiVisibility} style={{ background: BRAND, borderColor: BRAND, marginTop: 16 }}>
               Save AI Visibility
+            </Button>
+          </Card>
+
+          {/* ── Schema Markup (auto JSON-LD) ────────────────────────────────── */}
+          <Card title={<Space><CodeOutlined /> Schema Markup</Space>} style={{ marginTop: 16 }}>
+            <Paragraph type="secondary" style={{ marginTop: 0 }}>
+              Auto-generate structured data (JSON-LD) from each page&apos;s content for clients to
+              review &amp; approve. This is the platform master switch &amp; plan gate — clients still
+              approve each schema before it goes live. Per-site overrides live on each user&apos;s
+              <b> Rendering</b> tab in Users.
+            </Paragraph>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+              <Switch checked={schemaEnabled} onChange={setSchemaEnabled} checkedChildren="On" unCheckedChildren="Off" />
+              <Text>{schemaEnabled ? 'Feature enabled platform-wide' : 'Feature disabled — no schema generated or served'}</Text>
+            </div>
+
+            <label>
+              <Space size={4}>
+                Available from plan
+                <Tooltip title="Sites on this plan and above get schema auto-generation & serving. Lower plans don't (unless force-enabled per-site).">
+                  <InfoCircleOutlined style={{ color: '#bfbfbf', fontSize: 12 }} />
+                </Tooltip>
+              </Space>
+            </label>
+            <div style={{ marginTop: 6, marginBottom: 16, opacity: schemaEnabled ? 1 : 0.5 }}>
+              <Select
+                value={schemaMinPlan}
+                onChange={(v) => setSchemaMinPlan(v)}
+                disabled={!schemaEnabled}
+                style={{ width: 220 }}
+                options={[
+                  { value: 'free', label: 'Free (all plans)' },
+                  { value: 'starter', label: 'Starter & up' },
+                  { value: 'pro', label: 'Pro & up' },
+                  { value: 'agency', label: 'Agency only' },
+                ]}
+              />
+            </div>
+
+            <Button type="primary" icon={<SaveOutlined />} loading={saving} onClick={saveSchema} style={{ background: BRAND, borderColor: BRAND }}>
+              Save Schema settings
             </Button>
           </Card>
         </Col>

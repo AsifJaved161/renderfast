@@ -26,6 +26,7 @@ export const FEATURE_DEFS: FeatureDef[] = [
   { key: '/insight', label: 'SEO Insights', defaultMinPlan: 'starter' },
   { key: '/bot-visibility', label: 'Bot Visibility', defaultMinPlan: 'starter' },
   { key: '/ai-visibility', label: 'AI Visibility Tracker', defaultMinPlan: 'pro' },
+  { key: '/schema-markup', label: 'Schema Markup', defaultMinPlan: 'starter' },
   { key: '/bot-cost', label: 'Bot Cost Insights', defaultMinPlan: 'pro' },
   { key: '/render-history', label: 'Render History', defaultMinPlan: 'free' },
   { key: '/cache', label: 'Cache Manager', defaultMinPlan: 'free' },

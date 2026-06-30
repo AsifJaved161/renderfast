@@ -19,6 +19,8 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { extractGeoSignals, computeAiCitationScore, type GeoSignals } from '@/lib/geo-signals'
 import { fetchCoreWebVitals, type CoreWebVitals } from '@/lib/web-vitals'
 import { normalizeUrl } from '@/lib/url-utils'
+import { generateSchema, type SiteInfo } from '@/lib/schema-generator'
+import { isSchemaEnabledForSite } from '@/lib/schema-settings'
 
 // Master on/off switch — set RENDER_DIAGNOSTICS=off to disable with zero overhead.
 export const DIAGNOSTICS_ENABLED = process.env.RENDER_DIAGNOSTICS !== 'off'
@@ -305,6 +307,65 @@ async function persistDiagnostic(row: {
   }
 }
 
+// ── Schema (JSON-LD) auto-generation ─────────────────────────────────────────
+// Reuses the rendered HTML we already have to generate structured data, then
+// upserts it for client review via the smart RPC (which preserves a prior
+// client decision unless the content changed — see migration 027). Fully
+// isolated: any failure is swallowed and never affects diagnostics.
+async function generateAndStoreSchema(siteId: string, url: string, renderedHtml: string): Promise<void> {
+  // Minimal site info (name + domain + owner) for the Organization type + the
+  // platform feature gate.
+  const { data: site } = await supabaseAdmin
+    .from('sites')
+    .select('name, domain, user_id')
+    .eq('id', siteId)
+    .maybeSingle()
+  if (!site) return
+
+  // Platform gate: global switch + per-plan gate + per-site admin override.
+  // Disabled → don't generate (and nothing new appears for review/serving).
+  const { data: owner } = await supabaseAdmin
+    .from('users')
+    .select('plan')
+    .eq('id', site.user_id as string)
+    .maybeSingle()
+  const plan = (owner?.plan as import('@/lib/supabase').Plan) ?? 'free'
+  if (!(await isSchemaEnabledForSite(siteId, plan))) return
+
+  const siteInfo: SiteInfo = {
+    siteName: (site.name as string | null) ?? (site.domain as string | null) ?? '',
+    domain: (site.domain as string | null) ?? '',
+  }
+
+  // Normalize the URL so generate-time and serve-time keys match (Part 6).
+  let key = url
+  try {
+    key = normalizeUrl(url)
+  } catch {
+    /* keep raw */
+  }
+
+  const gen = generateSchema(renderedHtml, key, siteInfo)
+  if (!gen) return
+
+  const upsert = (schemaType: string, jsonLd: unknown, extracted: unknown, confidence: string) =>
+    supabaseAdmin.rpc('upsert_generated_schema', {
+      p_site_id: siteId,
+      p_url: key,
+      p_schema_type: schemaType,
+      p_json_ld: jsonLd,
+      p_extracted_fields: extracted,
+      p_confidence: confidence,
+    })
+
+  // Primary type + (on home/about pages) a coexisting Organization schema.
+  await upsert(gen.schemaType, gen.jsonLd, gen.extractedFields, gen.confidence)
+  if (gen.organization) {
+    // Secondary Organization carries no separate confidence → default 'medium'.
+    await upsert('Organization', gen.organization.jsonLd, gen.organization.extractedFields, 'medium')
+  }
+}
+
 // ── Core (awaitable) routine ─────────────────────────────────────────────────
 // Exported so a "re-scan" endpoint can await a batch; captureDiagnostics() is
 // the fire-and-forget wrapper used on the hot render path.
@@ -383,6 +444,14 @@ export async function runDiagnostics(input: DiagnosticInput): Promise<void> {
     hreflang_links: meta.hreflangLinks,
     http_status: httpStatus,
   })
+
+  // Auto-generate structured data (JSON-LD) from the same rendered HTML and
+  // upsert it for client review. Isolated — never affects the diagnostics write.
+  try {
+    await generateAndStoreSchema(input.siteId, input.url, renderedHtml)
+  } catch (e) {
+    console.error('[diagnostics] schema generation failed (ignored):', e)
+  }
 }
 
 // ── Public entry point — FIRE-AND-FORGET, never throws into the caller ────────

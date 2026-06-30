@@ -61,6 +61,44 @@ export async function GET() {
     const cacheHits = await headCount('renders', (q) => q.eq('cache_hit', true))
     const cacheHitRate = rendersAll ? Math.round((cacheHits / rendersAll) * 100) : 0
 
+    // ── Schema Markup adoption ───────────────────────────────────────────────────
+    // Total generated across all sites, and approval rate (approved / reviewed)
+    // broken down by type — shows whether clients trust the generated schema.
+    // 'edited' counts as approved (it's served). Missing table → all zeros.
+    const SCHEMA_TYPES = ['Article', 'Product', 'FAQPage', 'Organization']
+    const schemaByType = await Promise.all(
+      SCHEMA_TYPES.map(async (t) => {
+        const [tTotal, tApproved, tRejected, tPending] = await Promise.all([
+          headCount('generated_schemas', (q) => q.eq('schema_type', t)),
+          headCount('generated_schemas', (q) => q.eq('schema_type', t).in('status', ['approved', 'edited'])),
+          headCount('generated_schemas', (q) => q.eq('schema_type', t).eq('status', 'rejected')),
+          headCount('generated_schemas', (q) => q.eq('schema_type', t).eq('status', 'pending')),
+        ])
+        const reviewed = tApproved + tRejected
+        return {
+          type: t,
+          total: tTotal,
+          approved: tApproved,
+          rejected: tRejected,
+          pending: tPending,
+          approval_rate: reviewed ? Math.round((tApproved / reviewed) * 100) : null,
+        }
+      })
+    )
+    const schemaTotal = schemaByType.reduce((s, t) => s + t.total, 0)
+    const schemaApproved = schemaByType.reduce((s, t) => s + t.approved, 0)
+    const schemaRejected = schemaByType.reduce((s, t) => s + t.rejected, 0)
+    const schemaPending = schemaByType.reduce((s, t) => s + t.pending, 0)
+    const schemaReviewed = schemaApproved + schemaRejected
+    const schema = {
+      total: schemaTotal,
+      approved: schemaApproved,
+      rejected: schemaRejected,
+      pending: schemaPending,
+      approval_rate: schemaReviewed ? Math.round((schemaApproved / schemaReviewed) * 100) : null,
+      by_type: schemaByType,
+    }
+
     // ── Top plans ──────────────────────────────────────────────────────────────
     const plans = ['free', 'starter', 'pro', 'agency']
     const planCounts = await Promise.all(
@@ -123,6 +161,7 @@ export async function GET() {
       revenue: { mrr: Math.round(mrr), arr: Math.round(mrr * 12), total_customers: totalCustomers },
       renders: { total_all_time: rendersAll, today: rendersToday, this_month: rendersMonth, cache_hit_rate: cacheHitRate },
       system: { total_sites: totalSites, total_cached_pages: totalCached, total_bot_visits: totalBotVisits },
+      schema,
       top_plans: topPlans,
       signups_trend: Object.entries(signupsTrend).map(([date, count]) => ({ date, count })),
       renders_trend: Object.entries(rendersTrend).map(([date, count]) => ({ date, count })),

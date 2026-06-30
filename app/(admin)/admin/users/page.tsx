@@ -407,6 +407,8 @@ function UserDrawer({
   const [newPassword, setNewPassword] = useState('')
   const [pwLoading, setPwLoading] = useState(false)
   const [crawlingId, setCrawlingId] = useState<string | null>(null)
+  // Per-site Schema Markup override map ({ siteId: 'on' | 'off' }).
+  const [schemaOverrides, setSchemaOverrides] = useState<Record<string, 'on' | 'off'>>({})
 
   useEffect(() => {
     if (!user) return
@@ -421,7 +423,27 @@ function UserDrawer({
       .then((r) => r.json())
       .then((d) => setTeam(d.members ?? []))
       .catch(() => {})
+    fetch('/api/admin/schema-settings')
+      .then((r) => r.json())
+      .then((d) => setSchemaOverrides(d.overrides ?? {}))
+      .catch(() => {})
   }, [user])
+
+  // Force-enable / disable / reset Schema Markup for one site (support tool).
+  async function setSchemaOverride(siteId: string, override: 'on' | 'off' | 'default') {
+    try {
+      const res = await fetch('/api/admin/schema-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ site_id: siteId, override }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setSchemaOverrides(data.overrides ?? {})
+        message.success('Schema override updated')
+      } else message.error(data.error ?? 'Failed')
+    } catch { message.error('Failed') }
+  }
 
   async function triggerRender(siteId: string, domain: string) {
     setCrawlingId(siteId)
@@ -545,7 +567,28 @@ function UserDrawer({
                   locale={{ emptyText: 'No sites' }}
                   columns={[
                     { title: 'Domain', dataIndex: 'domain', ellipsis: true },
-                    { title: 'Status', dataIndex: 'status', width: 90 },
+                    { title: 'Status', dataIndex: 'status', width: 80 },
+                    {
+                      title: (
+                        <Tooltip title="Force Schema Markup on/off for this site, regardless of plan. 'Default' follows the platform plan gate.">
+                          <span>Schema</span>
+                        </Tooltip>
+                      ),
+                      width: 130,
+                      render: (_: unknown, s: any) => (
+                        <Select
+                          size="small"
+                          style={{ width: 110 }}
+                          value={schemaOverrides[s.id] ?? 'default'}
+                          onChange={(v) => setSchemaOverride(s.id, v)}
+                          options={[
+                            { value: 'default', label: 'Default' },
+                            { value: 'on', label: 'Force on' },
+                            { value: 'off', label: 'Force off' },
+                          ]}
+                        />
+                      ),
+                    },
                     {
                       title: '',
                       width: 120,

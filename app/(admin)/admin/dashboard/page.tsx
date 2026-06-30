@@ -26,6 +26,14 @@ interface Stats {
   revenue: { mrr: number; arr: number; total_customers: number }
   renders: { total_all_time: number; today: number; this_month: number; cache_hit_rate: number }
   system: { total_sites: number; total_cached_pages: number; total_bot_visits: number }
+  schema?: {
+    total: number
+    approved: number
+    rejected: number
+    pending: number
+    approval_rate: number | null
+    by_type: { type: string; total: number; approved: number; rejected: number; pending: number; approval_rate: number | null }[]
+  }
   top_plans: { plan: string; user_count: number; percentage: number }[]
   signups_trend: { date: string; count: number }[]
   renders_trend: { date: string; count: number }[]
@@ -230,6 +238,57 @@ export default function AdminDashboardPage() {
           </Card>
         </Col>
       </Row>
+
+      {/* ── Schema Markup adoption ──────────────────────────────────────────── */}
+      {stats.schema && stats.schema.total > 0 && (
+        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
+          <Col xs={24}>
+            <Card title={<span style={{ color: '#1f2937' }}>Schema Markup — Adoption &amp; Trust</span>}>
+              <Row gutter={[16, 16]} align="middle">
+                <Col xs={12} md={6}>
+                  <Statistic title="Schemas Generated" value={stats.schema.total} />
+                </Col>
+                <Col xs={12} md={6}>
+                  <Statistic title="Pending Review" value={stats.schema.pending} valueStyle={{ color: stats.schema.pending ? '#faad14' : undefined }} />
+                </Col>
+                <Col xs={12} md={6}>
+                  <Statistic
+                    title="Approval Rate"
+                    value={stats.schema.approval_rate ?? 0}
+                    suffix="%"
+                    valueStyle={{ color: BRAND }}
+                  />
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {stats.schema.approved.toLocaleString()} approved · {stats.schema.rejected.toLocaleString()} rejected
+                  </Text>
+                </Col>
+                <Col xs={12} md={6}>
+                  <Statistic title="Active (Live)" value={stats.schema.approved} valueStyle={{ color: BRAND }} />
+                </Col>
+              </Row>
+              <Divider style={{ margin: '16px 0' }} />
+              <Text strong style={{ color: '#1f2937' }}>By type</Text>
+              <Row gutter={[16, 12]} style={{ marginTop: 10 }}>
+                {stats.schema.by_type.map((t) => (
+                  <Col xs={12} md={6} key={t.type}>
+                    <div style={{ border: '1px solid #f0f0f0', borderRadius: 8, padding: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Text strong>{t.type}</Text>
+                        <Tag color={t.approval_rate == null ? 'default' : t.approval_rate >= 70 ? 'green' : t.approval_rate >= 40 ? 'gold' : 'red'}>
+                          {t.approval_rate == null ? 'n/a' : `${t.approval_rate}%`}
+                        </Tag>
+                      </div>
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {t.total} total · {t.pending} pending
+                      </Text>
+                    </div>
+                  </Col>
+                ))}
+              </Row>
+            </Card>
+          </Col>
+        </Row>
+      )}
 
       {/* ── Quick actions + activity ────────────────────────────────────────── */}
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
